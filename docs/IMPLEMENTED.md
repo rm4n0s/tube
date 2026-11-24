@@ -83,3 +83,15 @@ The log of the finished steps of `docs/IMPLEMENTATION.md`, in order (its rule 11
   - One private function, `roundTrip`, does the exchange of both `do` (an acknowledged request) and `dump`, so that each Tag is created in one place; the plan's `ack(messages, seq)` is `ackErrno(message)`, which reads the code of one `NLMSG_ERROR` message.
   - More Tags, each tested: `NetlinkAddressInvalid` (a prefix that is not valid or has a zone) and `NetlinkFamilyInvalid` (a default route of a family that is neither IPv4 nor IPv6). `NetlinkSocketFailed` and `NetlinkBindFailed` cannot be caused and are in `docs/ERROR-TAGS-UNTESTED.md`. `NetlinkReceiveFailed` and `NetlinkParseFailed` are tested through an unexported hook that replaces the read of the socket.
   - Two bugs were found by the tests and fixed: a dump that took more than one read kept messages pointing into a buffer that the next read overwrote (the IPv4 address came back as `/0`); an answer shorter than a netlink header made `roundTrip` read for ever (now `NetlinkParseFailed`).
+
+## Step 2.2: The keeper and the TUN device
+- Date: 2026-11-25
+- What was done: `internal/core/sandbox`: the messages between Tube and the keeper (JSON, one per packet of a `SOCK_SEQPACKET` socket pair, a descriptor with `SCM_RIGHTS`); `openTun`; the keeper (`KeeperMain`, `IsKeeper`), which makes its mounts private, makes `tube0`, sends its descriptor with `ready` and serves until the socket closes; `Start`, `Device`, `Close` and `Check` on Tube's side, starting `/proc/self/exe` as `tube-keeper` in new user, network and mount namespaces; `cmd/tube` runs the keeper when it is started as one.
+- Checks: `scripts/checks.sh` passed, with the tests against the real server. The sandbox tests also passed twice under the race detector. No keeper is left after the tests.
+- Proofs: none
+- Manual checks: none
+- Differences from the plan or the spec:
+  - More Tags than the plan names, each tested: `SandboxStartCancelled`, `SandboxDeadlineFailed` (a receive on a socket that this side closed), `SandboxMessageTooLarge`, `SandboxSendFailed`, `SandboxProtocolError`, `SandboxKeeperExit`. Five that cannot be caused are in `docs/ERROR-TAGS-UNTESTED.md` with their reasons.
+  - `message` has only the fields this step uses; steps 2.3 to 2.5 add theirs. A descriptor that comes with a message is made close-on-exec and non-blocking inside `receive`, so a descriptor that cannot be is a message that cannot be read (`SandboxMessageInvalid`), not one more Tag.
+  - The test binary also plays three misbehaving keepers (chosen by `TUBE_FAKE_KEEPER`), to test `SandboxProtocolError`, `SandboxKeeperFailed` and `SandboxKeeperExit`.
+  - `Close` does its work in a named method, `close`: under the race detector the closure's frame is named `Close.1`, not `Close.func1`, and the route test broke. Trap 3 of `docs/IMPLEMENTATION.md` now says this.

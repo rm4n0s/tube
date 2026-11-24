@@ -10,6 +10,7 @@ import (
 	"os"
 
 	"github.com/rm4n0s/tube/internal/app"
+	"github.com/rm4n0s/tube/internal/core/sandbox"
 )
 
 const (
@@ -22,6 +23,10 @@ const (
 )
 
 func main() {
+	// The keeper is this same binary, started again inside the namespace (docs/SPEC.md §8.1).
+	if sandbox.IsKeeper() {
+		os.Exit(sandbox.KeeperMain())
+	}
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
