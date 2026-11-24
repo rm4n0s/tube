@@ -1,0 +1,33 @@
+version: "2"
+
+run:
+  go: "1.27"
+
+linters:
+  # Keep the default linters (errcheck, govet, ineffassign, staticcheck,
+  # unused) and add the ones the project requires.
+  default: standard
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - revive
+  settings:
+    revive:
+      rules:
+        # Exported identifiers need a doc comment (CLAUDE.md "Definition of done").
+        # Names like profiles.Profile read well, so the check for names that
+        # repeat the package name is off.
+        - name: exported
+          arguments:
+            - disableStutteringCheck
+        - name: package-comments
+
+  exclusions:
+    paths:
+      # Fixture trees of internal/archtest and proof fixtures; never built.
+      - testdata
+
+formatters:
+  enable:
+    - gofmt

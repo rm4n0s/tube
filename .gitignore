@@ -32,3 +32,12 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# the binary of `go build -o tube ./cmd/tube` in the repo root
+/tube
+
+# release builds (scripts/build-release.sh)
+/dist/
+
+# Failed golden comparisons
+*.actual.txt
