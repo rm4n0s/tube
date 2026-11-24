@@ -85,7 +85,7 @@ func TestAdd(t *testing.T) {
 	t.Run("the original can go away", func(t *testing.T) {
 		f := newFixture(t)
 		path := f.write("work.ovpn", profilestest.Options{Separate: true})
-		p, err := f.store.Add(f.ctx, path, "work")
+		p, err := f.store.Add(f.ctx, path, "work", AddOptions{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -104,7 +104,7 @@ func TestAdd(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := f.store.Add(f.ctx, path, "work"); err != nil {
+		if _, err := f.store.Add(f.ctx, path, "work", AddOptions{}); err != nil {
 			t.Fatal(err)
 		}
 		sameBytes(t, path, before)
@@ -132,7 +132,7 @@ func TestAddNames(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			f := newFixture(t)
-			p, err := f.store.Add(f.ctx, f.write("x.ovpn", profilestest.Options{}), tt.give)
+			p, err := f.store.Add(f.ctx, f.write("x.ovpn", profilestest.Options{}), tt.give, AddOptions{})
 			if tt.wantRoute != "" {
 				errtest.Route(t, err, tt.wantRoute)
 				if len(f.folders()) != 0 {
@@ -163,7 +163,7 @@ func TestAddNames(t *testing.T) {
 	t.Run("a name that another profile has, in another case", func(t *testing.T) {
 		f := newFixture(t)
 		f.add("Work", profilestest.Options{})
-		_, err := f.store.Add(f.ctx, f.write("x.ovpn", profilestest.Options{}), "wORK")
+		_, err := f.store.Add(f.ctx, f.write("x.ovpn", profilestest.Options{}), "wORK", AddOptions{})
 		meta := errtest.Route(t, err, "Store.Add->Store.nameFree.ProfileNameTaken")
 		if meta["name"] != "wORK" {
 			t.Errorf("metadata = %v", meta)
@@ -177,24 +177,29 @@ func TestAddNames(t *testing.T) {
 func TestAddFailures(t *testing.T) {
 	t.Run("a path that does not exist", func(t *testing.T) {
 		f := newFixture(t)
-		_, err := f.store.Add(f.ctx, filepath.Join(f.src, "missing.ovpn"), "x")
-		// The folder exists; the parser cannot open the file in it: its own error, untouched.
-		if got := ProblemOf(err); got.Kind != ProblemUnreadable {
-			t.Errorf("ProblemOf = %+v (err %v)", got, err)
+		_, err := f.store.Add(f.ctx, filepath.Join(f.src, "missing.ovpn"), "x", AddOptions{})
+		meta := errtest.Route(t, err, "Store.Add->withoutScripts.ProfileUnreadable")
+		if meta["file"] != "missing.ovpn" {
+			t.Errorf("metadata = %v", meta)
 		}
 		if len(f.folders()) != 0 {
 			t.Errorf("the store has %v", f.folders())
 		}
 	})
+	t.Run("a folder that does not exist", func(t *testing.T) {
+		f := newFixture(t)
+		_, err := f.store.Add(f.ctx, filepath.Join(f.src, "missing", "x.ovpn"), "x", AddOptions{})
+		errtest.Route(t, err, "Store.Add->withoutScripts.ProfileFolderUnreadable")
+	})
 	t.Run("an empty path", func(t *testing.T) {
 		f := newFixture(t)
-		_, err := f.store.Add(f.ctx, "", "x")
+		_, err := f.store.Add(f.ctx, "", "x", AddOptions{})
 		errtest.Route(t, err, "Store.Add.ProfilePathEmpty")
 	})
 	t.Run("a syntax error", func(t *testing.T) {
 		f := newFixture(t)
 		path := f.write("x.ovpn", profilestest.Options{Extra: []string{`remote "127.0.0.2 1194`}})
-		_, err := f.store.Add(f.ctx, path, "x")
+		_, err := f.store.Add(f.ctx, path, "x", AddOptions{})
 		got := ProblemOf(err)
 		if got.Kind != ProblemSyntax || got.Line == 0 {
 			t.Errorf("ProblemOf = %+v (err %v)", got, err)
@@ -207,7 +212,7 @@ func TestAddFailures(t *testing.T) {
 		f := newFixture(t)
 		ctx, cancel := context.WithCancel(f.ctx)
 		cancel()
-		_, err := f.store.Add(ctx, f.write("x.ovpn", profilestest.Options{}), "x")
+		_, err := f.store.Add(ctx, f.write("x.ovpn", profilestest.Options{}), "x", AddOptions{})
 		errtest.Route(t, err, "Store.Add.ProfileAddCancelled")
 	})
 	t.Run("a file goes away before the copy", func(t *testing.T) {
@@ -218,7 +223,7 @@ func TestAddFailures(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		_, err := f.store.Add(f.ctx, path, "x")
+		_, err := f.store.Add(f.ctx, path, "x", AddOptions{})
 		meta := errtest.Route(t, err, "Store.Add->Store.store.ProfileCopyReadFailed")
 		if meta["file"] != "client.key" {
 			t.Errorf("metadata = %v", meta)
@@ -235,21 +240,21 @@ func TestAddFailures(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		_, err := f.store.Add(f.ctx, path, "x")
+		_, err := f.store.Add(f.ctx, path, "x", AddOptions{})
 		errtest.Route(t, err, "Store.Add->Store.store.ProfileCopyFolderOpenFailed")
 		if len(f.folders()) != 0 {
 			t.Errorf("the store has %v", f.folders())
 		}
 	})
-	t.Run("the profile changes before the copy", func(t *testing.T) {
+	t.Run("a file changes before the copy", func(t *testing.T) {
 		f := newFixture(t)
-		path := f.write("x.ovpn", profilestest.Options{})
+		path := f.write("x.ovpn", profilestest.Options{Separate: true})
 		f.store.afterLoad = func() {
-			if err := os.WriteFile(path, []byte("client\n"), 0o600); err != nil {
+			if err := os.WriteFile(filepath.Join(filepath.Dir(path), "client.key"), []byte("not a key\n"), 0o600); err != nil {
 				t.Fatal(err)
 			}
 		}
-		_, err := f.store.Add(f.ctx, path, "x")
+		_, err := f.store.Add(f.ctx, path, "x", AddOptions{})
 		// The copy is parsed again, and fails: the parser's own error.
 		if got := ProblemOf(err); got.Kind == ProblemNone {
 			t.Errorf("err = %v, want the parser's", err)
@@ -598,7 +603,7 @@ func TestSecretsStayOut(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(filepath.Dir(path), "client.key"), []byte(marker+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, err := f.store.Add(f.ctx, path, "x")
+	_, err := f.store.Add(f.ctx, path, "x", AddOptions{})
 	if err == nil {
 		t.Fatal("a key that is not a key was accepted")
 	}

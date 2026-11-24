@@ -59,7 +59,7 @@ func (f *fixture) write(name string, opts profilestest.Options) string {
 // add writes and adds a profile, and fails the test when the add fails.
 func (f *fixture) add(name string, opts profilestest.Options) Profile {
 	f.t.Helper()
-	p, err := f.store.Add(f.ctx, f.write(name+".ovpn", opts), name)
+	p, err := f.store.Add(f.ctx, f.write(name+".ovpn", opts), name, AddOptions{})
 	if err != nil {
 		f.t.Fatalf("Add(%s): %v", name, err)
 	}

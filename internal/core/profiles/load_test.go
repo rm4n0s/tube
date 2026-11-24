@@ -101,7 +101,7 @@ func TestLoad(t *testing.T) {
 		}
 		replaceLine(t, path, "ca ca.crt", "ca big.crt")
 		_, _, err := Load(dir, "a.ovpn")
-		meta := errtest.Route(t, err, "Load.ProfileFileTooLarge")
+		meta := errtest.Route(t, err, "Load->loadWith.ProfileFileTooLarge")
 		if meta["file"] != "big.crt" {
 			t.Errorf("metadata = %v", meta)
 		}
@@ -132,7 +132,7 @@ func TestLoad(t *testing.T) {
 		}
 		profilestest.WriteProfile(t, dir, "a.ovpn", pki, profilestest.Options{Extra: extra})
 		_, _, err := Load(dir, "a.ovpn")
-		errtest.Route(t, err, "Load.ProfileTooManyFiles")
+		errtest.Route(t, err, "Load->loadWith.ProfileTooManyFiles")
 	})
 	t.Run("exactly the most files", func(t *testing.T) {
 		dir := t.TempDir()
@@ -156,7 +156,7 @@ func TestLoad(t *testing.T) {
 	t.Run("a folder that does not exist", func(t *testing.T) {
 		missing := filepath.Join(t.TempDir(), "missing")
 		_, _, err := Load(missing, "a.ovpn")
-		meta := errtest.Route(t, err, "Load.ProfileFolderOpenFailed")
+		meta := errtest.Route(t, err, "Load->loadWith.ProfileFolderOpenFailed")
 		if meta["dir"] != missing {
 			t.Errorf("metadata = %v", meta)
 		}

@@ -7,15 +7,26 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/tube/internal/core/storage"
 )
 
+// AddOptions say how a profile is added.
+type AddOptions struct {
+	// WithoutScripts adds a profile that names scripts with those lines disabled.
+	WithoutScripts bool
+}
+
+// TagProfileRunsScripts is the error of a profile that names scripts, added without
+// AddOptions.WithoutScripts. Its metadata "options" names them.
+const TagProfileRunsScripts = "ProfileRunsScripts"
+
 // Add adds the profile at path under the name: it parses it, copies it and the files that it
 // names into a new folder of the store, parses the copy again, and writes meta.json last
 // (docs/SPEC.md §6.2). The original is only read. When Add fails, nothing is left in the store.
-func (s *Store) Add(ctx context.Context, path, name string) (Profile, error) {
+func (s *Store) Add(ctx context.Context, path, name string, opts AddOptions) (Profile, error) {
 	if err := ctx.Err(); err != nil {
 		return Profile{}, errors.NewErr(TagProfileAddCancelled, err)
 	}
@@ -30,9 +41,12 @@ func (s *Store) Add(ctx context.Context, path, name string) (Profile, error) {
 		return Profile{}, errors.New(TagProfilePathEmpty, "the path of the profile is empty")
 	}
 	dir, file := filepath.Dir(path), filepath.Base(path)
-	_, names, err := Load(dir, file)
+	text, names, disabled, err := withoutScripts(dir, file)
 	if err != nil {
 		return Profile{}, err
+	}
+	if len(disabled) > 0 && !opts.WithoutScripts {
+		return Profile{}, errors.New(TagProfileRunsScripts, "the profile runs scripts", "options", strings.Join(disabled, ", "))
 	}
 	if s.afterLoad != nil {
 		s.afterLoad()
@@ -42,7 +56,7 @@ func (s *Store) Add(ctx context.Context, path, name string) (Profile, error) {
 		return Profile{}, err
 	}
 	folder := filepath.Join(s.dir, id)
-	p, err := s.store(ctx, id, dir, file, names, name)
+	p, err := s.store(ctx, id, dir, file, text, names, name)
 	if err != nil {
 		// The error that matters is the first; a folder that is left is removed by a later
 		// List, as a failed add.
@@ -52,21 +66,24 @@ func (s *Store) Add(ctx context.Context, path, name string) (Profile, error) {
 	return p, nil
 }
 
-// store copies the profile file and the files it names from dir into the new folder of id,
-// checks the copy, and writes meta.json.
-func (s *Store) store(ctx context.Context, id, dir, file string, names []string, name string) (Profile, error) {
+// store writes the text of the profile file, copies the files it names from dir into the new
+// folder of id, checks the copy, and writes meta.json.
+func (s *Store) store(ctx context.Context, id, dir, file string, text []byte, names []string, name string) (Profile, error) {
 	files := filepath.Join(s.dir, id, filesDir)
 	if err := storage.EnsureDir(ctx, files); err != nil {
 		return Profile{}, err
 	}
-	contents, failed, err := readFiles(dir, append([]string{file}, names...))
+	contents, failed, err := readFiles(dir, names)
 	if err != nil {
 		if failed == "" {
 			return Profile{}, errors.NewErr(TagProfileCopyFolderFails, err).SetMetadata("dir", dir)
 		}
 		return Profile{}, errors.NewErr(TagProfileCopyReadFailed, err).SetMetadata("file", failed)
 	}
-	for i, n := range append([]string{file}, names...) {
+	if err := storage.WriteFileAtomic(ctx, filepath.Join(files, file), text); err != nil {
+		return Profile{}, err
+	}
+	for i, n := range names {
 		dest := filepath.Join(files, filepath.FromSlash(n))
 		if err := storage.EnsureDir(ctx, filepath.Dir(dest)); err != nil {
 			return Profile{}, err
