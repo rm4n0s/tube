@@ -1,0 +1,2 @@
+- `Fine`: a reason
+- `NoReason`

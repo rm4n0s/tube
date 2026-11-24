@@ -84,13 +84,17 @@ cmd/tube ──► internal/tui ──► internal/app ──► internal/core/.
 
 ### 4.2 Rules that `internal/archtest` checks
 
-1. `internal/core/...` and `internal/app` import no UI library (`charm.land/...`, `github.com/charmbracelet/...`) and not `internal/tui`.
-2. `internal/tui` imports `internal/app` and, of the core, only `clock` and `sanitize`. Nothing imports `internal/tui` but `cmd/tube`.
-3. Only `internal/core/vpn` and `internal/core/profiles` import `github.com/rm4n0s/gopenvpn-conn/...`; nothing imports its `vpnnet`.
-4. Nothing imports the standard library `errors`, and nothing calls `fmt.Errorf` (CLAUDE.md "Error handling").
-5. Nothing imports `os/exec` but `internal/core/sandbox` (which starts the keeper and the application), `internal/tui` (the editor, §13.5) and test files. Tube never runs `ip`, `unshare`, `openvpn` or a shell.
-6. Every Go file starts with `// SPDX-License-Identifier: GPL-2.0-only`.
-7. Every error Tag (the first argument of `errors.New`, `errors.NewErr`, `errors.NewErrf`, a string literal) is asserted by a test, by its route (`HasRoute("...Tag")`). `scripts/error-tags.sh --untested` lists the ones that are not; `docs/ERROR-TAGS-UNTESTED.md` is the only list of exceptions, each with its reason.
+1. `internal/core/...` and `internal/app` import no UI library (`charm.land/...`, `github.com/charmbracelet/...`) and not `internal/tui`; `internal/core` does not import `internal/app`.
+2. `internal/tui` imports `internal/app` and, of the core, only `clock` and `sanitize`. Nothing imports `internal/tui` but `cmd/tube`, and nothing imports a UI library but `internal/tui` and `cmd/tube`.
+3. Only `internal/core/vpn` (with the packages below it) and `internal/core/profiles` import `github.com/rm4n0s/gopenvpn-conn/...`, in test files too; nothing imports its `vpnnet`.
+4. Nothing imports the standard library `errors`, and no file but a test calls `fmt.Errorf` (CLAUDE.md "Error handling").
+5. Nothing imports `os/exec` but `internal/core/sandbox` (which starts the keeper and the application), `internal/tui` (the editor, §13.5), test files, and the packages that only tests use (a folder whose name ends with `test`: `vpntest`, `nstest`, ...). Tube never runs `ip`, `unshare`, `openvpn` or a shell.
+6. Every Go file starts with the line `// SPDX-License-Identifier: GPL-2.0-only`.
+7. Every error Tag (the first argument of `errors.New`, `errors.NewErr`, `errors.NewErrf`: a string literal or a Tag constant) is created at one place and is asserted by a test, by its route (`HasRoute("...Tag")`) or by its Tag. `scripts/error-tags.sh --untested` lists the ones that are not; `docs/ERROR-TAGS-UNTESTED.md` is the only list of exceptions, each with its reason.
+8. No file has `import "C"`.
+9. `go.mod` requires directly only the modules that CLAUDE.md allows.
+10. No Go file has a control or format character but the new line and the tab, or invalid UTF-8: such a character is written as an escape, so that the code a reviewer sees is the code the compiler gets.
+11. `InsecureSkipVerify` appears only in test files.
 
 ## 5. Files and folders
 
