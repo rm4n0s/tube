@@ -19,7 +19,7 @@ This repository is **GPL-2.0-only** (the user, 2026-11-25), because gopenvpn-con
 - Test all: `go test -race ./...` (the race detector needs cgo, so this one needs a C compiler)
 - Test the cgo-free path: `CGO_ENABLED=0 go test ./...`
 - Test one package: `go test ./internal/core/profiles -run TestName -v`
-- Tests against a real OpenVPN server: `scripts/vpn-ns.sh -- go test -race -tags tube_server ./...` (a private user and network namespace, no root; the tests start and stop `openvpn` themselves, on the loopback of that namespace)
+- Tests against a real OpenVPN server: `scripts/vpn-ns.sh -- go test -race -p 1 -tags tube_server ./...` (a private user and network namespace, no root; the tests start and stop `openvpn` themselves, on the loopback of that namespace; `-p 1` because the servers of two packages would share the namespace's network)
 - Update golden files: `go test ./internal/tui -run Golden -update-goldens`, then review every changed file (the golden files of the TUI are text)
 - All the checks of "Definition of done" in one command: `scripts/checks.sh`
 - Heavy commands (full test runs, lint, the tests against the real server): through `scripts/heavy.sh`, see "Memory (OOM)"; `scripts/checks.sh` does it itself
@@ -36,7 +36,7 @@ A script that a step of `docs/IMPLEMENTATION.md` adds does not exist before that
 ## Definition of done
 Before reporting a task as finished, run `gofmt` (on `cmd` and `internal`), `go vet ./...`, `golangci-lint run` and `go test -race ./...`, and fix anything they report. Say so explicitly if any step was skipped or failed. Also:
 - `CGO_ENABLED=0 go build ./...` and `CGO_ENABLED=0 go test ./...` pass (proves Tube stays cgo-free)
-- From the step that adds them: `scripts/vpn-ns.sh -- go test -race -tags tube_server ./...` passes
+- From the step that adds them: `scripts/vpn-ns.sh -- go test -race -p 1 -tags tube_server ./...` passes
 - `scripts/error-tags.sh --untested` prints nothing (every error Tag has a test that asserts its route; `docs/ERROR-TAGS-UNTESTED.md` is the only exception list)
 - Every new exported identifier has a doc comment, and every Go file has its SPDX line
 - Every changed golden file has been looked at, not just regenerated

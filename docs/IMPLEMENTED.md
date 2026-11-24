@@ -59,3 +59,16 @@ The log of the finished steps of `docs/IMPLEMENTATION.md`, in order (its rule 11
 - Proofs: none
 - Manual checks: none
 - Differences from the plan or the spec: the tests of a server that does not answer use a UDP socket of the loopback that is bound and never answers, instead of a port where nothing listens: a closed port answers with an ICMP refusal at once, so a cancel after 100 ms would come too late to be tested. The test of the cancel shows that gopenvpn-conn's error carries `context.Canceled`, so `KindOf` needs nothing more.
+
+## Step 1.4: The real server in tests
+- Date: 2026-11-25
+- What was done: `scripts/vpn-ns.sh` (a private user and network namespace with its loopback up, `TUBE_NS=1`); `vpn/vpntest.StartServer` (tag `tube_server`): a real `openvpn` server on the loopback of the namespace with keys of `profilestest`, pushed DNS and search domain, an optional user name and password checked by a script of the test, optional IPv6, `Stop` and `Start`, and a client profile for it; `internal/core/packettest` (ICMP echo requests and replies for IPv4 and IPv6, built by hand); the tests that dial the real server with `vpn.Dial` and ping it through the tunnel over UDP, TCP and IPv6, and with a right and a wrong password.
+- Checks: `scripts/checks.sh` passed, with the tests against the real server (OpenVPN 2.7 of the machine). `pgrep -a openvpn` shows nothing afterwards.
+- Proofs: none
+- Manual checks: none
+- Differences from the plan or the spec:
+  - The server tests run one package at a time (`go test -p 1`, in `scripts/checks.sh`, `CLAUDE.md` and rule 10): every server uses 10.8.0.0/24, and two servers of two packages at once would share the namespace's routes, so the kernel could send one server's replies to the other's device.
+  - `scripts/checks.sh` also lints with `--build-tags tube_server`, so the files of the server tests are linted too.
+  - `packettest` has the IPv6 echo and the reading functions (`Src`, `Dst`, `Version`) now, which step 2.3 would have added: the IPv6 test of this step needed them.
+  - The test of `vpn` that uses the server is in the external package `vpn_test`: `vpntest` imports `vpn`.
+  - `Server.Running` was added, for the test of `Stop` and `Start`.

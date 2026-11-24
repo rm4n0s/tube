@@ -55,11 +55,12 @@ This file breaks the milestones of `docs/SPEC.md` §18 into small steps. Each st
     test -z "$(gofmt -l cmd internal)"
     go vet ./...
     golangci-lint run
+    golangci-lint run --build-tags tube_server
     GOMEMLIMIT=3GiB go test -race -p 2 ./...
     CGO_ENABLED=0 go build ./...
     CGO_ENABLED=0 go test ./...
     scripts/error-tags.sh --untested                                # prints nothing
-    scripts/vpn-ns.sh -- go test -race -tags tube_server ./...      # from step 1.4, alone
+    scripts/vpn-ns.sh -- go test -race -p 1 -tags tube_server ./...      # from step 1.4, alone
     ```
     While you work, run the tests of the package you are changing (`go test ./internal/core/profiles`), and `scripts/checks.sh --no-server` when you think you are done; run the full `scripts/checks.sh` once at the end. A check that fails is fixed in the code, not in the check.
 11. **Proofs.** Only when the step has a **Proof** item:
