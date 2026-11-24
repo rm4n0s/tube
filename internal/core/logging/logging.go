@@ -10,7 +10,6 @@ import (
 	"io"
 	"log/slog"
 	"os"
-	"strings"
 	"sync"
 
 	"github.com/rm4n0s/errors"
@@ -18,7 +17,6 @@ import (
 
 // The Tags of this package's errors.
 const (
-	TagLevelInvalid    = "LogLevelInvalid"
 	TagOpenCancelled   = "LogOpenCancelled"
 	TagOpenFailed      = "LogOpenFailed"
 	TagWriteAfterClose = "LogWriteAfterClose"
@@ -31,22 +29,6 @@ const (
 // MaxBytes is the size a log file may reach; the write that would pass it starts a new file, and
 // the full one becomes the file with ".1" after its name, replacing the one before.
 const MaxBytes = 1 << 20
-
-// ParseLevel turns the value of --log-level into a level: debug, info, warn or error, in any
-// case.
-func ParseLevel(s string) (slog.Level, error) {
-	switch strings.ToLower(s) {
-	case "debug":
-		return slog.LevelDebug, nil
-	case "info":
-		return slog.LevelInfo, nil
-	case "warn":
-		return slog.LevelWarn, nil
-	case "error":
-		return slog.LevelError, nil
-	}
-	return 0, errors.New(TagLevelInvalid, "the log level must be debug, info, warn or error", "level", s)
-}
 
 // Open opens the log file at path for appending, creating it with mode 0600, and returns a
 // logger that writes the records at or above level to it, and the file's closer.
@@ -67,6 +49,11 @@ func Open(ctx context.Context, path string, level slog.Level) (*slog.Logger, io.
 func openAppend(path string) (*os.File, int64, error) {
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
+		return nil, 0, err
+	}
+	// A log that existed with wider rights is narrowed: it may hold the names of profiles.
+	if err := f.Chmod(0o600); err != nil {
+		_ = f.Close() // nothing was written; the chmod's error is the one that matters
 		return nil, 0, err
 	}
 	info, err := f.Stat()

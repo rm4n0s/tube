@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-only
 
-// Package sanitize makes text that came from a client safe to store, log and draw
-// (docs/SPEC.md §8.3). A login name or a client version is whatever bytes the other side chose
-// to send: an escape sequence in it would otherwise reach the user's terminal.
+// Package sanitize makes hostile text safe to store, log and draw (docs/SPEC.md §6.5). A profile
+// and everything a VPN server sends are whatever bytes their authors chose: an escape sequence
+// in a profile's name or in a server's message would otherwise reach the user's terminal, and a
+// new line in a search domain would add a line to resolv.conf.
 package sanitize
 
 import (
@@ -48,4 +49,40 @@ func Display(s string, max int) string {
 // unsafe says whether a character must not reach a terminal, a log line or a text field.
 func unsafe(r rune) bool {
 	return unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || unicode.Is(unicode.Zl, r) || unicode.Is(unicode.Zp, r)
+}
+
+// maxHostName is the longest name that DNS allows, in bytes, without the ending dot.
+const maxHostName = 253
+
+// maxLabel is the longest label of a name, in bytes.
+const maxLabel = 63
+
+// HostName says whether s can be written into resolv.conf as a search domain: 1 to 253
+// bytes, labels of 1 to 63 letters, digits and hyphens (ASCII only) separated by single
+// dots, no label starting or ending with a hyphen. A trailing dot is not accepted.
+func HostName(s string) bool {
+	if len(s) == 0 || len(s) > maxHostName {
+		return false
+	}
+	for label := range strings.SplitSeq(s, ".") {
+		if len(label) == 0 || len(label) > maxLabel || label[0] == '-' || label[len(label)-1] == '-' {
+			return false
+		}
+		for i := 0; i < len(label); i++ {
+			if !hostNameByte(label[i]) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// hostNameByte says whether a byte may be in a label of a host name: an ASCII letter, a digit
+// or a hyphen.
+func hostNameByte(c byte) bool {
+	switch {
+	case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '-':
+		return true
+	}
+	return false
 }

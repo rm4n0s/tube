@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -54,44 +53,8 @@ func newFile(t *testing.T, path string, max int64) *rotatingFile {
 	return w
 }
 
-func TestParseLevel(t *testing.T) {
-	tests := []struct {
-		in        string
-		want      slog.Level
-		wantRoute string
-	}{
-		{in: "debug", want: slog.LevelDebug},
-		{in: "info", want: slog.LevelInfo},
-		{in: "warn", want: slog.LevelWarn},
-		{in: "error", want: slog.LevelError},
-		{in: "INFO", want: slog.LevelInfo},
-		{in: "Warn", want: slog.LevelWarn},
-		{in: "", wantRoute: "ParseLevel.LogLevelInvalid"},
-		{in: "verbose", wantRoute: "ParseLevel.LogLevelInvalid"},
-		{in: "warning", wantRoute: "ParseLevel.LogLevelInvalid"},
-		{in: " info", wantRoute: "ParseLevel.LogLevelInvalid"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.in, func(t *testing.T) {
-			got, err := ParseLevel(tt.in)
-			if tt.wantRoute != "" {
-				if meta := wantRoute(t, err, tt.wantRoute); meta["level"] != tt.in {
-					t.Errorf("metadata = %v", meta)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatal(err)
-			}
-			if got != tt.want {
-				t.Errorf("ParseLevel(%q) = %v, want %v", tt.in, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestOpenWritesRecordsAtTheLevel(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "cave.log")
+	path := filepath.Join(t.TempDir(), "tube.log")
 	logger, closer, err := Open(context.Background(), path, slog.LevelInfo)
 	if err != nil {
 		t.Fatal(err)
@@ -134,14 +97,12 @@ func TestOpenWritesRecordsAtTheLevel(t *testing.T) {
 		!failed.Err.HasRoute("TestOpenWritesRecordsAtTheLevel.ListenFailed") {
 		t.Errorf("the logged error is %+v", failed)
 	}
-	if runtime.GOOS != "windows" {
-		info, err := os.Stat(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if info.Mode().Perm() != 0o600 {
-			t.Errorf("mode = %o, want 600", info.Mode().Perm())
-		}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Errorf("mode = %o, want 600", info.Mode().Perm())
 	}
 
 	// Opening again appends.
@@ -159,17 +120,44 @@ func TestOpenWritesRecordsAtTheLevel(t *testing.T) {
 	}
 }
 
+func TestOpenNarrowsAnExistingLog(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "tube.log")
+	if err := os.WriteFile(path, []byte("old\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, closer, err := Open(context.Background(), path, slog.LevelInfo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := closer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Errorf("mode = %o, want 600", info.Mode().Perm())
+	}
+	if got := read(t, path); got != "old\n" {
+		t.Errorf("the old content is %q: opening must append, not replace", got)
+	}
+}
+
 func TestOpenErrors(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	path := filepath.Join(t.TempDir(), "cave.log")
+	path := filepath.Join(t.TempDir(), "tube.log")
 	_, _, err := Open(ctx, path, slog.LevelInfo)
 	wantRoute(t, err, "Open.LogOpenCancelled")
 	if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
 		t.Error("the file was created")
 	}
 
-	missing := filepath.Join(t.TempDir(), "missing", "cave.log")
+	missing := filepath.Join(t.TempDir(), "missing", "tube.log")
 	_, _, err = Open(context.Background(), missing, slog.LevelInfo)
 	if meta := wantRoute(t, err, "Open.LogOpenFailed"); meta["path"] != missing {
 		t.Errorf("metadata = %v", meta)
@@ -177,7 +165,7 @@ func TestOpenErrors(t *testing.T) {
 }
 
 func TestRotation(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "cave.log")
+	path := filepath.Join(t.TempDir(), "tube.log")
 	w := newFile(t, path, 10)
 	write := func(s string) {
 		t.Helper()
@@ -218,7 +206,7 @@ func TestRotation(t *testing.T) {
 }
 
 func TestRotationCountsWhatTheFileAlreadyHad(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "cave.log")
+	path := filepath.Join(t.TempDir(), "tube.log")
 	if err := os.WriteFile(path, []byte("12345678"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -236,7 +224,7 @@ func TestRotationCountsWhatTheFileAlreadyHad(t *testing.T) {
 
 func TestWriteErrors(t *testing.T) {
 	t.Run("after Close", func(t *testing.T) {
-		w := newFile(t, filepath.Join(t.TempDir(), "cave.log"), 10)
+		w := newFile(t, filepath.Join(t.TempDir(), "tube.log"), 10)
 		if err := w.Close(); err != nil {
 			t.Fatal(err)
 		}
@@ -244,7 +232,7 @@ func TestWriteErrors(t *testing.T) {
 		wantRoute(t, err, "Write.LogWriteAfterClose")
 	})
 	t.Run("the file cannot be written", func(t *testing.T) {
-		w := newFile(t, filepath.Join(t.TempDir(), "cave.log"), 10)
+		w := newFile(t, filepath.Join(t.TempDir(), "tube.log"), 10)
 		if err := w.file.Close(); err != nil { // behind the writer's back
 			t.Fatal(err)
 		}
@@ -252,7 +240,7 @@ func TestWriteErrors(t *testing.T) {
 		wantRoute(t, err, "Write.LogWriteFailed")
 	})
 	t.Run("the full file cannot be put aside", func(t *testing.T) {
-		path := filepath.Join(t.TempDir(), "cave.log")
+		path := filepath.Join(t.TempDir(), "tube.log")
 		// A folder with something in it where the old file goes: the rename fails.
 		if err := os.MkdirAll(filepath.Join(path+".1", "in-the-way"), 0o700); err != nil {
 			t.Fatal(err)
@@ -278,14 +266,11 @@ func TestWriteErrors(t *testing.T) {
 		}
 	})
 	t.Run("the new file cannot be opened", func(t *testing.T) {
-		if runtime.GOOS == "windows" {
-			t.Skip("Windows does not remove the folder of an open file")
-		}
 		dir := filepath.Join(t.TempDir(), "state")
 		if err := os.Mkdir(dir, 0o700); err != nil {
 			t.Fatal(err)
 		}
-		path := filepath.Join(dir, "cave.log")
+		path := filepath.Join(dir, "tube.log")
 		w := newFile(t, path, 10)
 		if _, err := w.Write([]byte("1234567890")); err != nil {
 			t.Fatal(err)
@@ -309,7 +294,7 @@ func TestWriteErrors(t *testing.T) {
 }
 
 func TestCloseError(t *testing.T) {
-	w := newFile(t, filepath.Join(t.TempDir(), "cave.log"), 10)
+	w := newFile(t, filepath.Join(t.TempDir(), "tube.log"), 10)
 	if err := w.file.Close(); err != nil { // behind the writer's back
 		t.Fatal(err)
 	}

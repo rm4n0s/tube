@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/rm4n0s/errors"
 )
@@ -20,6 +21,8 @@ const (
 	TagHomeUnknown        = "StorageHomeUnknown"
 	TagEnsureCancelled    = "StorageEnsureCancelled"
 	TagDirCreateFailed    = "StorageDirCreateFailed"
+	TagDirStatFailed      = "StorageDirStatFailed"
+	TagNotADir            = "StorageNotADir"
 	TagDirNarrowFailed    = "StorageDirNarrowFailed"
 	TagWriteCancelled     = "StorageWriteCancelled"
 	TagWriteCreateFailed  = "StorageWriteCreateFailed"
@@ -129,12 +132,42 @@ func EnsureDir(ctx context.Context, dir string) error {
 	if err := ctx.Err(); err != nil {
 		return errors.NewErr(TagEnsureCancelled, err).SetMetadata("dir", dir)
 	}
-	if err := os.MkdirAll(dir, DirMode); err != nil {
-		return errors.NewErr(TagDirCreateFailed, err).SetMetadata("dir", dir)
+	// The folders that do not exist, from the innermost up.
+	var missing []string
+	for d := filepath.Clean(dir); ; d = filepath.Dir(d) {
+		if _, err := os.Lstat(d); err == nil || filepath.Dir(d) == d {
+			break
+		}
+		missing = append(missing, d)
 	}
-	// MkdirAll's mode is cut by the umask, and a folder that existed keeps the mode it had.
-	if err := os.Chmod(dir, DirMode); err != nil {
-		return errors.NewErr(TagDirNarrowFailed, err).SetMetadata("dir", dir)
+	// Each folder is made and set to 0700 at once, from the outermost down: the mode of Mkdir
+	// is cut by the umask, and a parent cut to 000 could not hold its child. A folder that
+	// existed keeps the mode it had, so it is narrowed.
+	paths := []string{dir}
+	if len(missing) > 0 {
+		paths = paths[:0]
+		for _, p := range slices.Backward(missing) {
+			paths = append(paths, p)
+		}
+	}
+	for _, p := range paths {
+		if len(missing) > 0 {
+			if err := os.Mkdir(p, DirMode); err != nil && !os.IsExist(err) {
+				return errors.NewErr(TagDirCreateFailed, err).SetMetadata("dir", dir)
+			}
+		}
+		info, err := os.Stat(p)
+		if err != nil {
+			return errors.NewErr(TagDirStatFailed, err).SetMetadata("dir", dir)
+		}
+		if !info.IsDir() {
+			return errors.New(TagNotADir, "the path is not a folder", "dir", p)
+		}
+		if info.Mode().Perm() != DirMode {
+			if err := os.Chmod(p, DirMode); err != nil {
+				return errors.NewErr(TagDirNarrowFailed, err).SetMetadata("dir", dir)
+			}
+		}
 	}
 	return nil
 }

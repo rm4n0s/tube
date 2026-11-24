@@ -5,7 +5,6 @@ package storage
 import (
 	"bytes"
 	"context"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -158,8 +157,9 @@ func TestEnsure(t *testing.T) {
 	})
 	t.Run("whatever the umask is", func(t *testing.T) {
 		for _, mask := range []int{0, 0o022, 0o077, 0o777} {
-			old := syscall.Umask(mask)
+			// The test's own folder is made before the umask changes.
 			dir := filepath.Join(t.TempDir(), "sub", "dir")
+			old := syscall.Umask(mask)
 			err := EnsureDir(context.Background(), dir)
 			syscall.Umask(old)
 			if err != nil {
@@ -204,6 +204,39 @@ func TestEnsure(t *testing.T) {
 		if meta["dir"] != dirs.Config {
 			t.Errorf("metadata = %v", meta)
 		}
+	})
+	t.Run("a file at the folder's path", func(t *testing.T) {
+		file := filepath.Join(t.TempDir(), "file")
+		if err := os.WriteFile(file, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		meta := wantRoute(t, EnsureDir(context.Background(), file), "EnsureDir.StorageNotADir")
+		if meta["dir"] != file {
+			t.Errorf("metadata = %v", meta)
+		}
+	})
+	t.Run("a link to nothing at the folder's path", func(t *testing.T) {
+		link := filepath.Join(t.TempDir(), "link")
+		if err := os.Symlink(filepath.Join(t.TempDir(), "nothing"), link); err != nil {
+			t.Fatal(err)
+		}
+		wantRoute(t, EnsureDir(context.Background(), link), "EnsureDir.StorageDirStatFailed")
+	})
+	t.Run("only the folders it made are narrowed, and the folder itself", func(t *testing.T) {
+		parent := filepath.Join(t.TempDir(), "parent")
+		if err := os.Mkdir(parent, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(parent, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		dir := filepath.Join(parent, "a", "b")
+		if err := EnsureDir(context.Background(), dir); err != nil {
+			t.Fatal(err)
+		}
+		checkMode(t, parent, 0o755)
+		checkMode(t, filepath.Join(parent, "a"), 0o700)
+		checkMode(t, dir, 0o700)
 	})
 	t.Run("a folder of somebody else cannot be narrowed", func(t *testing.T) {
 		notRoot(t)
@@ -356,6 +389,15 @@ func TestWriteFileAtomic(t *testing.T) {
 			t.Errorf("the folder has %v, want only people.json", names)
 		}
 	})
+	t.Run("mode 0600 whatever the umask is", func(t *testing.T) {
+		old := syscall.Umask(0)
+		defer syscall.Umask(old)
+		path := filepath.Join(t.TempDir(), "secret.json")
+		if err := WriteFileAtomic(ctx, path, []byte("x")); err != nil {
+			t.Fatal(err)
+		}
+		checkMode(t, path, 0o600)
+	})
 	t.Run("a cancelled context", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "x.json")
 		err := WriteFileAtomic(cancelled(), path, []byte("x"))
@@ -451,8 +493,8 @@ func TestReadFile(t *testing.T) {
 		if !errors.Is(err, ErrNotExist) {
 			t.Error("errors.Is(err, ErrNotExist) is false")
 		}
-		if errors.Is(err, ErrAlreadyRunning) {
-			t.Error("the error matches another sentinel")
+		if errors.Is(err, &errors.Error{Tag: TagFileTooLarge}) {
+			t.Error("the error matches another Tag")
 		}
 	})
 	t.Run("a cancelled context", func(t *testing.T) {
@@ -460,7 +502,6 @@ func TestReadFile(t *testing.T) {
 		wantRoute(t, err, "ReadFile.StorageReadCancelled")
 	})
 }
-
 
 func TestReadFileErrors(t *testing.T) {
 	ctx := context.Background()

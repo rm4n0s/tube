@@ -99,3 +99,63 @@ func TestDisplayIsIdempotent(t *testing.T) {
 		}
 	}
 }
+
+func TestHostName(t *testing.T) {
+	// label returns a label of n letters.
+	label := func(n int) string { return strings.Repeat("a", n) }
+	// name returns a name of exactly n bytes, made of labels of at most 63 letters.
+	name := func(n int) string {
+		var parts []string
+		for n > 0 {
+			size := min(n, 63)
+			if n-size == 1 {
+				size-- // a lone byte after a dot would be the dot itself: keep the last label longer
+			}
+			parts = append(parts, label(size))
+			n -= size
+			if n > 0 {
+				n-- // the dot
+			}
+		}
+		return strings.Join(parts, ".")
+	}
+	tests := []struct {
+		in   string
+		want bool
+	}{
+		{"example.com", true},
+		{"a", true},
+		{"a-b.c-d.example", true},
+		{"EXAMPLE.Com", true},
+		{"0.example", true},
+		{name(253), true},
+		{name(254), false},
+		{label(63) + ".com", true},
+		{label(64) + ".com", false},
+		{"", false},
+		{".", false},
+		{"example.com.", false},
+		{".example.com", false},
+		{"a..b", false},
+		{"-a.b", false},
+		{"a-.b", false},
+		{"a b", false},
+		{"a\nb", false},
+		{"a\nnameserver 6.6.6.6", false},
+		{"a;b", false},
+		{"exämple.com", false},
+		{"a_b.c", false},
+		{"a\x00b", false},
+	}
+	for _, tt := range tests {
+		if got := HostName(tt.in); got != tt.want {
+			t.Errorf("HostName(%q) = %v, want %v", tt.in, got, tt.want)
+		}
+	}
+	if n := len(name(253)); n != 253 {
+		t.Errorf("name(253) has %d bytes", n)
+	}
+	if n := len(name(254)); n != 254 {
+		t.Errorf("name(254) has %d bytes", n)
+	}
+}
