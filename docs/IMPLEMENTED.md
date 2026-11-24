@@ -72,3 +72,14 @@ The log of the finished steps of `docs/IMPLEMENTATION.md`, in order (its rule 11
   - `packettest` has the IPv6 echo and the reading functions (`Src`, `Dst`, `Version`) now, which step 2.3 would have added: the IPv6 test of this step needed them.
   - The test of `vpn` that uses the server is in the external package `vpn_test`: `vpntest` imports `vpn`.
   - `Server.Running` was added, for the test of `Stop` and `Start`.
+
+## Step 2.1: Netlink
+- Date: 2026-11-25
+- What was done: `internal/core/netlink` (Linux only): `Open`, `LinkUp`, `SetMTU`, `AddAddr` (IPv6 without duplicate address detection), `DelAddr`, `AddDefaultRoute` (a route that exists is not an error), `Links`, `LinkIndex`, `Addrs`, `Routes`, over one socket of rtnetlink, with the messages built by hand in the machine's byte order; `internal/core/nstest` (`Main`, `Run`, `Require`): a function of a test run in a new user and network namespace as uid 0; `golang.org/x/sys` is a direct dependency.
+- Checks: `scripts/checks.sh` passed, with the tests against the real server. The tests of `netlink` and `nstest` also passed three times in a row under the race detector.
+- Proofs: none
+- Manual checks: none
+- Differences from the plan or the spec:
+  - One private function, `roundTrip`, does the exchange of both `do` (an acknowledged request) and `dump`, so that each Tag is created in one place; the plan's `ack(messages, seq)` is `ackErrno(message)`, which reads the code of one `NLMSG_ERROR` message.
+  - More Tags, each tested: `NetlinkAddressInvalid` (a prefix that is not valid or has a zone) and `NetlinkFamilyInvalid` (a default route of a family that is neither IPv4 nor IPv6). `NetlinkSocketFailed` and `NetlinkBindFailed` cannot be caused and are in `docs/ERROR-TAGS-UNTESTED.md`. `NetlinkReceiveFailed` and `NetlinkParseFailed` are tested through an unexported hook that replaces the read of the socket.
+  - Two bugs were found by the tests and fixed: a dump that took more than one read kept messages pointing into a buffer that the next read overwrote (the IPv4 address came back as `/0`); an answer shorter than a netlink header made `roundTrip` read for ever (now `NetlinkParseFailed`).
