@@ -51,3 +51,11 @@ The log of the finished steps of `docs/IMPLEMENTATION.md`, in order (its rule 11
   - `Add` reads the profile's text once (in `withoutScripts`) and stores that text, so a change of the original after the parse does not reach the store. Reading the profile is now Tube's own error (`ProfileUnreadable`, `ProfileFolderUnreadable`), not the parser's. The test of step 1.1 that changed the original before the copy now damages a named file, which the parse of the copy still catches.
   - `Text` and `ReplaceText` refuse a broken profile (`ProfileBroken`), as SPEC §6.1 says a broken profile can only be deleted.
   - The names of the disabled options are given once each (two `up` lines give `up` once).
+
+## Step 1.3: The tunnel
+- Date: 2026-11-25
+- What was done: `internal/core/vpn`: `Dial` (parses the stored profile, gives it the credentials, connects with gopenvpn-conn), the `Tunnel` interface and the real tunnel, `Network` and `NetworkFromState` (at most one address of each family, IPv4 first; the MTU from 576 to 65535; at most 8 DNS servers and 6 search domains, only host names), `KindOf` for the errors of a connection. `vpn/vpntest.Tunnel`, a tunnel in memory with `Deliver`, `Written`, `Fail`, `OnWrite`, deadlines and the MTU check.
+- Checks: `scripts/checks.sh` passed (the tests against the real server are skipped: their script comes with step 1.4)
+- Proofs: none
+- Manual checks: none
+- Differences from the plan or the spec: the tests of a server that does not answer use a UDP socket of the loopback that is bound and never answers, instead of a port where nothing listens: a closed port answers with an ICMP refusal at once, so a cancel after 100 ms would come too late to be tested. The test of the cancel shows that gopenvpn-conn's error carries `context.Canceled`, so `KindOf` needs nothing more.
