@@ -5,10 +5,12 @@ Tube runs one application through a VPN, and only that application. This file is
 ## 1. Purpose
 
 - `tube firefox` or `tube ping -c 3 example.com` opens a terminal UI (TUI) with the user's **profiles** (OpenVPN client profiles, `.ovpn`). The user adds, looks at, changes and deletes profiles there, and selects one. Tube connects to it and starts the application.
+- **The TUI stays open while the application runs.** It shows the state of the VPN and how much traffic passes (the Status tab) and what the application prints (the Output tab), and it lets the user give the application another profile or take the network away from it (the Network tab).
 - **All the network of the application goes through the VPN**: TCP, UDP, ICMP and the looking up of names. Nothing else on the machine changes: other programs keep using the machine's network.
 - **Nothing leaks.** The application has no way to the network but the tunnel. Before the VPN is connected and after it has ended, the application has no network at all.
 - Tube needs no root, no `sudo`, no system service and no installed `openvpn`.
-- When the application ends, Tube disconnects and exits with the application's exit status.
+- When the application has ended and the user quits, Tube disconnects and exits with the application's exit status. Quitting earlier stops the application.
+- `tube --profile <name> <application>` does the same without a TUI: the application gets the terminal, for scripts and for programs that need the whole terminal.
 
 ## 2. Decisions
 
@@ -26,9 +28,14 @@ Tube runs one application through a VPN, and only that application. This file is
 | D10 | The namespace always has a default route into the tunnel, for every address family the VPN gave an address for, whatever routes the server pushed | D2: all the network of the application; the namespace has nothing else to route to |
 | D11 | A profile is stored as a copy: the profile file and the files it names, in Tube's configuration folder | a profile must keep working when the downloaded file is moved or deleted |
 | D12 | A password is asked for each time and is never written to a file; the user name can be remembered | the safe default; change it when the user asks |
-| D13 | `--profile <name>` runs the application with a profile without showing the TUI | scripts and the tests against the real server need a way without a terminal UI |
-| D14 | When the VPN connection ends while the application runs, Tube connects again by itself; the application has no network in between | a browser session outlives a short loss of the link; D2's "nothing else" still holds |
+| D13 | `--profile <name>` runs the application with a profile without showing the TUI | scripts, programs that need the whole terminal (D19) and the tests against the real server need a way without a terminal UI |
+| D14 | When the VPN connection ends by itself while the application runs, Tube connects again by itself; the application has no network in between. After the user disconnected (D17), Tube does not | a browser session outlives a short loss of the link; D2's "nothing else" still holds |
 | D15 | Tube sets `MOZ_NO_REMOTE=1` for the application | without it `tube firefox`, with a Firefox already open, hands the page to the open one, which is outside the VPN (§8.7) |
+| D16 | After a profile is selected, the TUI starts the application and stays open, with two tabs: one that shows the connection and its traffic (Status), one that shows the output of the application (Output) | the user, 2026-11-25 ("it will have two tabs in the TUI, one that show bandwidth etc and the other the output of the application") |
+| D17 | A third tab (Network) lets the user select and use another profile, or disconnect the network altogether, while the application is running | the user, 2026-11-25 |
+| D18 | In the TUI the application runs on a pseudo-terminal that Tube reads, with `TERM=dumb`. The Output tab shows what it prints as plain lines, and the keys typed on that tab go to the application | follows D16: the user's terminal belongs to the TUI, and a program whose output is a pipe holds its lines back; with the keys, Ctrl-C still stops `ping` |
+| D19 | With `--profile` there is no TUI and the application gets the user's own terminal | D13; a full-screen program (`vim`, `htop`, `ssh`) needs a real terminal, which the Output tab is not |
+| D20 | A switch to another profile connects the new one first and only then replaces the one in use; when the new one fails, nothing changes | the application keeps its network while the user waits; the gap is the moment of the replacement only |
 
 ## 3. Platform and requirements
 
@@ -66,8 +73,8 @@ cmd/tube ──► internal/tui ──► internal/app ──► internal/core/.
 
 | Package | What it is |
 |---|---|
-| `cmd/tube` | `main`: the keeper's entry (§8.1), the flags (§11), then the TUI or `--profile`, then the session |
-| `internal/app` | The application behind the TUI: owns the store, gives snapshots, commands and events (§12), connects, and runs the session. Also `version.go` and the sentences that errors are shown with |
+| `cmd/tube` | `main`: the keeper's entry (§8.1), the flags (§11), then the TUI or `--profile` |
+| `internal/app` | The application behind the TUI: owns the store, gives snapshots and commands (§12), connects, runs the session, and keeps the application's output. Also `version.go` and the sentences that errors are shown with |
 | `internal/app/apptest` | Test support for the TUI: a fake application with fixed content (for golden files) |
 | `internal/core/storage` | The folders, atomic writes and file modes (§5). `storage/storagetest` isolates tests |
 | `internal/core/clock` | `Clock` (now, timers) and a fake for tests |
@@ -79,7 +86,10 @@ cmd/tube ──► internal/tui ──► internal/app ──► internal/core/.
 | `internal/core/netlink` | The few rtnetlink requests Tube needs: link up, MTU, addresses, routes (§8.3) |
 | `internal/core/sandbox` | The namespace: the keeper and Tube's side of it, the TUN device, the DNS files, the application (§8) |
 | `internal/core/pump` | Moves IP packets between the TUN device and the tunnel (§9) |
-| `internal/core/session` | One run: a tunnel, a namespace, a pump and the application, with reconnecting (§10) |
+| `internal/core/session` | One run: a namespace, the application, and the tunnel and pump it has at the moment, with reconnecting, switching and disconnecting (§10) |
+| `internal/core/pty` | A pseudo-terminal: the application's terminal when the TUI shows its output (§8.5) |
+| `internal/core/termlog` | Turns what a program writes to a terminal into plain lines that are safe to draw (§13.9) |
+| `internal/core/nstest`, `packettest`, `dnstest`, `profiles/profilestest`, `sandbox/sandboxtest` | Test support: a function run inside a namespace, IP and DNS packets built by hand, test profiles and keys, a peer that plays the VPN on the device |
 | `internal/archtest` | Tests of the rules of §4.2, and the error-tag tool (`cmd/errortags`) |
 
 ### 4.2 Rules that `internal/archtest` checks
@@ -107,7 +117,7 @@ cmd/tube ──► internal/tui ──► internal/app ──► internal/core/.
 - Every folder Tube makes has mode 0700 and every file mode 0600, whatever the umask. A folder that exists with wider rights is narrowed when Tube first writes into it.
 - A file is written atomically: to a temporary file in the same folder, `fsync`, rename.
 - There is no lock: several Tubes may run at once, each with its own VPN connection and namespace. The store reads the folder each time it lists; when two Tubes change the same profile, the last write wins.
-- A relative path in one of the variables is an error (`StorageDirNotAbsolute`).
+- A relative path in a `TUBE_` variable is an error (`StorageDirNotAbsolute`); an XDG variable that is empty or relative is ignored, as the XDG specification says.
 
 ## 6. Profiles
 
@@ -148,7 +158,7 @@ For each profile: the name, the first remote (`host:port` and `udp` or `tcp`) an
 
 ### 6.5 Hostile text
 
-A profile, and everything a VPN server sends, is hostile text. `sanitize.Display(s, max)` drops control characters, escape sequences, bidirectional controls and invalid UTF-8, turns every white space into a space, and cuts to `max` runes with `…`. Everything from a profile or a server passes through it before it is stored in `meta.json`, logged or drawn. A secret is never drawn, also not sanitized: the TUI shows of a profile only what §6.4 lists.
+A profile, and everything a VPN server sends, is hostile text. `sanitize.Display(s, max)` replaces every unsafe character with U+FFFD (control characters, so also the escape character and the new line; Unicode format characters such as the bidirectional controls; the line and paragraph separators; invalid UTF-8) and cuts to `max` characters, the last being `…` when it cut. Everything from a profile or a server passes through it before it is stored in `meta.json`, logged or drawn. A secret is never drawn, also not sanitized: the TUI shows of a profile only what §6.4 lists.
 
 ## 7. The VPN connection
 
@@ -158,6 +168,7 @@ A profile, and everything a VPN server sends, is hostile text. `sanitize.Display
 type Tunnel interface {
     Read(packet []byte) (int, error)   // one IP packet from the VPN
     Write(packet []byte) (int, error)  // one IP packet to the VPN
+    SetReadDeadline(t time.Time) error // interrupts a Read, so that the pump can be stopped
     Network() Network                  // what the server pushed, checked
     Close() error
 }
@@ -188,7 +199,7 @@ The keeper and Tube talk over the socket, one JSON message in each packet:
 | keeper | `ready` + the TUN's file descriptor (`SCM_RIGHTS`) | the namespace exists; here is the device |
 | Tube | `configure` (a `Network`, the DNS servers to use) | set, or set again after a reconnect, the addresses, routes and DNS files |
 | keeper | `configured`, or `failed` (tag, message, metadata) | |
-| Tube | `run` (argv) | start the application |
+| Tube | `run` (the user's uid and gid, the delay before SIGKILL, whether the application gets a terminal of its own) | start the application, which the keeper was started with (its path and arguments are the keeper's own arguments) |
 | keeper | `started` (pid), or `failed` | |
 | Tube | `signal` (number) | send this signal to the application |
 | keeper | `exited` (exit status, or signal) | the application ended; the keeper exits |
@@ -220,7 +231,12 @@ The DNS servers of a run are the ones the user set for the profile (§6.3), else
 
 ### 8.5 The application
 
-On `run` the keeper starts the application in a nested user namespace (`CLONE_NEWUSER`) in which the user's own uid and gid are mapped back: the application sees itself as the user, owns its files as always, and has no capability over the network namespace, so it cannot change the addresses, the routes or the device. It gets the keeper's terminal, working folder and environment, with `TUBE=1`, `TUBE_PROFILE=<name>` and `MOZ_NO_REMOTE=1` added (D15). It stays in Tube's process group, so the keys of the terminal (Ctrl-C, Ctrl-\, Ctrl-Z) reach it as they would without Tube.
+On `run` the keeper starts the application in a nested user namespace (`CLONE_NEWUSER`) in which the user's own uid and gid are mapped back: the application sees itself as the user, owns its files as always, and has no capability over the network namespace, so it cannot change the addresses, the routes or the device. It gets the keeper's working folder and environment, with `TUBE=1`, `TUBE_PROFILE=<name>` and `MOZ_NO_REMOTE=1` added (D15).
+
+Its terminal depends on how Tube was started:
+
+- **With `--profile`** (D19) the application gets Tube's own terminal and stays in Tube's process group, so the keys of the terminal (Ctrl-C, Ctrl-\, Ctrl-Z) reach it as they would without Tube.
+- **In the TUI** (D18) the application is the leader of a new session whose terminal is a pseudo-terminal: Tube holds the other side, reads what the application prints (§13.9), and writes what the user types on the Output tab. `TERM` is `dumb` for the application, so that programs print plain lines. The size of the pseudo-terminal is the size of the Output tab.
 
 The application is found in `PATH` by Tube before anything else is done: a name that is not found ends Tube with status 127 before the TUI opens.
 
@@ -242,17 +258,19 @@ Two goroutines: one reads IP packets from the TUN's file descriptor and writes e
 
 - A packet that the device refuses (`EINVAL`, `EIO`) or that the tunnel refuses for its size is dropped and counted; it does not end the pump.
 - When the tunnel's `Read` or `Write` fails, the pump ends with that error (`io.EOF` when the server left).
-- `Stop` ends both goroutines and returns the counters (packets and bytes each way); it does not close the device, which lives across reconnects.
+- The counters (packets and bytes each way, and the dropped packets) can be read while it runs. `Stop` ends both goroutines and returns them; it closes neither the device, which lives across reconnects and switches, nor the tunnel.
 
 ## 10. The session
 
-One run of an application: `session.Start` takes a connected tunnel, starts the keeper, configures the namespace, starts the pump and the application; `Wait` returns when the application has ended.
+One run of an application: `session.Start` takes a connected tunnel, starts the keeper, configures the namespace, starts the pump and the application. The namespace and the application live as long as the session; the tunnel and its pump can be replaced while it lives.
 
-- **End.** When the application ends, Tube stops the pump, closes the tunnel (the library tells the server), waits for the keeper, removes the temporary folder and exits with the application's exit status, or 128 plus the number of the signal that ended it. Processes that the application left in the background keep running without a network.
-- **Signals.** While the application runs, Tube and the keeper ignore SIGINT and SIGQUIT (the terminal sends them to the application too). On SIGTERM or SIGHUP, Tube passes the signal to the application, and SIGKILL five seconds later.
+- **Reconnecting (D14).** When the pump ends because the tunnel failed, the application keeps running with no network. Tube says so (a line, below) and dials the profile again, with the credentials of this run (kept in memory only), after 1, 2, 4, 8, 15 and then every 30 seconds. On success it sends `configure` with the new `Network`, starts a new pump and says so. When the server refuses the credentials, Tube stops trying and says so. A reconnect never opens another way to the network.
+- **Disconnecting and switching (D17, D20).** `Disconnect` stops the pump and closes the tunnel, and Tube does not connect again by itself: the application keeps running with no network. `Use` gives the session another tunnel (of the same profile or of another one): the pump stops, the old tunnel is closed, the namespace is configured for the new one, and a new pump starts. When the namespace cannot be configured for the new tunnel, that tunnel is closed and the session stays disconnected. The profile that is dialed again after a loss is the one in use.
+- **Status.** The session tells, at any moment: its state (connected, connecting again, disconnected, login refused), since when, the profile in use, the tunnel's addresses, the DNS servers in the namespace's `resolv.conf`, the packets and bytes that passed each way since the session started (over all its tunnels) and the packets that were dropped, and whether the application runs or with which status it ended. It calls back when its state changes.
+- **End.** When the application has ended, the session stops the pump, closes the tunnel (the library tells the server), waits for the keeper and removes the temporary folder. The exit status is the application's, or 128 plus the number of the signal that ended it. Processes that the application left in the background keep running without a network.
+- **Signals.** With `--profile`, while the application runs, Tube and the keeper catch SIGINT and SIGQUIT and do nothing with them (the terminal sends them to the application too). In the TUI the terminal sends none: the keys go through the pseudo-terminal (§8.5). In both ways, on SIGTERM or SIGHUP Tube passes the signal to the application, and SIGKILL five seconds later. A signal is caught, never ignored: an ignored signal would stay ignored in the application.
 - **Tube's own failures** end it with status 125, after an error message on standard error; an application that cannot be executed is 126, one that is not found 127, a mistake in the arguments 2.
-- **Reconnecting (D14).** When the pump ends because the tunnel failed, the application keeps running with no network. Tube writes a line to standard error and dials the profile again, with the credentials of this run (kept in memory only), after 1, 2, 4, 8, 15 and then every 30 seconds. On success it sends `configure` with the new `Network`, starts the pump and writes a line. When the server refuses the credentials, Tube stops trying and says so. A reconnect never opens another way to the network.
-- **Lines of Tube** on standard error while the application runs (connected, the VPN ended, connected again, the warning of §8.4) start with `tube: `, and `--quiet` leaves them out.
+- **Lines of Tube** while the application runs (connected, the VPN ended, connected again, disconnected, now using another profile, the warning of §8.4) start with `tube: `. With `--profile` they go to standard error, and `--quiet` leaves them out. In the TUI they are the events of the Status tab (§13.8), and nothing is written to the terminal.
 
 ## 11. The command line
 
@@ -263,14 +281,14 @@ tube [options]                                      only keep the profiles (the 
   -p, --profile <name>    use this profile and do not show the TUI
       --auth-file <path>  with --profile: a file with the user name on the first line and
                           the password on the second
-  -q, --quiet             write no lines of Tube's own while the application runs
+  -q, --quiet             with --profile: write no lines of Tube's own while the application runs
       --version           print the version
   -h, --help              print this help
 ```
 
 - The options end at the first argument that is not one; everything after it is the application and its arguments, untouched.
-- Without `--profile`, Tube opens the TUI. It needs a terminal on standard input and output; without one it ends with an error that names `--profile`.
-- `--profile <name>` takes the profile with exactly that name, else the only one that has it when compared without case. With a profile that asks for a password and no `--auth-file`, Tube asks on the terminal (the user name when none is remembered, then the password, without echo); with no terminal it is an error. `--profile` with no application is a mistake in the arguments.
+- **Without `--profile`**, Tube opens the TUI, which needs a terminal on standard input and output; without one Tube ends with an error that names `--profile`. The user selects a profile; the application starts on a pseudo-terminal and the TUI stays open (§13.8) until the user quits. Tube then exits with the application's status. When the user quits before a profile was selected, the status is 130 (0 when there was no application).
+- **With `--profile <name>`** there is no TUI: Tube connects, the application gets Tube's terminal (D19), and Tube exits with its status when it ends. The profile is the one with exactly that name, else the only one that has it when compared without case. With a profile that asks for a password and no `--auth-file`, Tube asks on the terminal (the user name when none is remembered, then the password, without echo); with no terminal it is an error. `--profile` with no application is a mistake in the arguments. The file of `--auth-file` must be readable by the user only.
 - `tube --version` prints `tube <version>`. The version is `devVersion` of `internal/app/version.go`, or the one that the release build sets.
 
 ## 12. The application layer (`internal/app`)
@@ -281,15 +299,20 @@ tube [options]                                      only keep the profiles (the 
 
 `App.Snapshot()` returns a value that the TUI draws from and never changes: the application to run (its name and arguments, or none), and the profiles of §6.4 (id, name, remotes, needs a password, remembered user name, DNS servers, last used, the ignored options, the names of the files, or the reason it is broken).
 
-### 12.2 Commands and events
+### 12.2 Commands and changes
 
-Commands that can take time (reading files, connecting) run in a goroutine of the App and answer with an event; the TUI turns events into `tea.Msg`. The commands: add a profile (path, name, without scripts or not), rename, set the user name, set the DNS servers, read the text of a profile for the editor and replace it, delete, connect (profile, credentials), cancel the connecting. The events: the profiles changed, a command failed (the error), connecting started, connected (the session is ready to run), connecting failed.
+The commands block and take a context; the TUI calls each inside a command of its own (a `tea.Cmd`), so its screen never waits. They are: add a profile (path, name, without scripts or not), rename, set the user name, set the DNS servers, begin and end an edit of a profile's text (the App gives the path of a copy for the editor, then reads it back), delete, and connect (profile, credentials, whether to remember the user name). Cancelling the context of a connect cancels it.
 
-`App.Run(ctx, stdio)` runs the session that `connect` made, after the TUI has ended and given the terminal back, and returns the exit status.
+`App.Subscribe` registers a function that is called after every change: of the profiles, of the session's state, of the application's output. The calls are joined so that a program that prints fast causes at most about twenty a second.
 
 ### 12.3 How an error is shown
 
 `app.Explain(err)` gives the sentence for the user: for the Tags that Tube knows (its own, and those of gopenvpn-conn for a wrong password, a server that does not answer, a certificate that is not accepted, an option that is not supported, a file that is missing) a sentence in plain words, with the option and the line when the error has them; for any other error its message. The Tag is shown after it, in parentheses. The whole error (route, metadata, stack) goes to the log. No sentence has a secret in it.
+
+### 12.4 Running
+
+- `App.Run(ctx)` is the way of `--profile`: it runs the application on Tube's terminal through the connected VPN and returns its exit status when it has ended.
+- `App.Start(ctx)` is the way of the TUI: it starts the application on a pseudo-terminal and returns. From then on the App gives: the **run state** (what the session's status has, with the rates of the last second and Tube's last 100 lines as events), the **output** (the last 5000 lines that the application printed, as plain text that is safe to draw), `Input` (bytes for the application's terminal), `ResizeOutput`, `Disconnect`, `Switch` (connect another profile, and when it is connected, give it to the session in place of the one in use: D20), and `Stop` (SIGTERM, SIGKILL five seconds later). `App.Finish` stops the application when it still runs, waits for it, cleans up and returns its exit status; `cmd/tube` calls it after the TUI has ended.
 
 ## 13. The TUI
 
@@ -332,11 +355,40 @@ Shows: name, every remote, whether it asks for a password, the remembered user n
 - A profile that asks for a password opens the login page first: user name (filled with the remembered one), password (drawn as nothing: no characters, no dots), and "remember the user name" (on by default). `Enter` connects, `Esc` goes back.
 - The connecting page shows the profile's name and the seconds that have passed. `Esc` cancels the connecting and goes back.
 - When it fails: the error (§12.3) on the profiles page; a wrong password goes back to the login page with the user name kept.
-- When it succeeds: the time of use is saved, the TUI ends, the terminal is given back, and the application starts (§10).
+- When it succeeds: the time of use is saved, the application starts, and the run screen opens (§13.8).
 
 ### 13.7 Help
 
-`?` shows the keys of every page and three lines about what Tube does and §8.7. Any key closes it.
+`?` shows the keys of every page and tab, and three lines about what Tube does and §8.7. Any key closes it. (On the Output tab `?` goes to the application, as every key does there.)
+
+### 13.8 The run screen and the Status tab
+
+While the application runs, and after it has ended until the user quits, the TUI shows the run screen:
+
+- The first line: the application, the profile in use, the state (`connected` and for how long, `connecting again…`, `disconnected`, `login refused`), and the rates down and up. After the application ended: that it ended, and its status.
+- The second line: the tabs, `Status`, `Output`, `Network`; the current one is in brackets. `Tab` goes to the next tab and `Shift-Tab` to the one before, on every tab.
+- The **Status** tab (the first one shown): the application and whether it runs; the profile and the state; the tunnel's addresses, the DNS servers in use and the MTU; for each direction the bytes and packets since the start and the rate of the last second; the dropped packets; and the events, which are Tube's lines (§10) with their time, the newest last.
+- Sizes are written with decimal units (`1.5 MB`, `80.0 kB/s`), times as `hh:mm:ss`.
+
+### 13.9 The Output tab
+
+- It shows the last lines that the application printed, cut to the width. It follows the end; `PgUp` and `PgDn` scroll, `Home` goes to the oldest line that is kept (5000 are), `End` follows again.
+- What the application writes is made into plain lines first (`internal/core/termlog`): a new line ends a line; a carriage return alone starts the line again (a progress bar is one line); a backspace takes a character away; a tab becomes spaces; escape sequences (colors, cursor moves, titles) and every other control or format character are dropped; a line is at most 1000 characters. Nothing that the application prints can move the TUI's cursor or change its colors.
+- **Every other key typed on this tab goes to the application**, as bytes written to its terminal: text as it is, Enter as a carriage return, Backspace, Ctrl-C, Ctrl-D, Ctrl-U, Escape; pasted text too. So Ctrl-C on this tab stops `ping`, and a program that asks a question can be answered. The terminal is a dumb one (D18): a program that wants the whole screen is run with `--profile`.
+- After the application ended, the keys go nowhere, and `q` quits.
+
+### 13.10 The Network tab
+
+- The list of the profiles, with the one in use marked, and above it one line that says what the application has now: the profile it uses, or that it has no network and why (connecting again, disconnected, login refused).
+- `Enter` on a profile switches to it (D20): a profile that asks for a password opens the login page first; while the new profile connects, the one in use stays in use, and `Esc` cancels. When it is connected, it replaces the one in use. When it fails, the error is shown and nothing changes. When the application has no network, `Enter` on a profile (also the one last used) connects it.
+- `x` disconnects, after a question: the application keeps running without network, and Tube does not connect again until a profile is chosen.
+- Adding, changing and deleting profiles is not done here: it is done before a profile is selected (§13.2 to §13.5).
+
+### 13.11 Quitting
+
+- While the application runs, `q` or `Ctrl-C` on the Status or the Network tab asks: "<application> is still running. Stop it and quit?" On yes, Tube stops the application (§12.4) and quits when it has ended; a second `Ctrl-C` quits at once.
+- After the application ended by itself, a message says so with its status, and `q` quits without a question.
+- Tube exits with the application's exit status.
 
 ## 14. Security
 
@@ -352,6 +404,8 @@ What Tube promises, and where it is kept:
 | Keys and passwords stay private | modes 0700 and 0600 (§5); the password only in memory (D12); never in a log, an error or on the screen | tests of the modes; tests that a known secret appears in no log line and no error |
 | Hostile text cannot reach the terminal | `sanitize.Display` (§6.5); search domains checked (§7) | tests with escape sequences in names, remotes and pushed options |
 | A profile runs nothing | only `ovpn` parses it; script options are refused or disabled (§6.2) | a test adds a profile with `up` and sees that nothing ran |
+| The application's output cannot reach the user's terminal as it is | it is read from a pseudo-terminal and made into plain lines (§13.9) | a test writes random bytes and escape sequences and finds no control character in the lines |
+| A switch or a disconnect opens no other way | they replace or remove the tunnel behind the same device; the namespace does not change (§10) | tests that a connection inside fails after a disconnect, and during a switch that fails |
 
 Not promised: hiding from the VPN provider; protection against an application that talks to a process outside the namespace (§8.7, §17); anything about the traffic of the rest of the machine.
 
@@ -388,6 +442,7 @@ A step that says so makes a proof with `scripts/tui-proof.sh`: the real program,
 - Programs that need to gain rights (`sudo`, a setuid program) do not gain them inside the namespace.
 - IPv6 works only when the VPN gives an IPv6 address; else the application has IPv4 only.
 - What gopenvpn-conn does not support is not supported: compression, proxies, static keys, encrypted private keys, challenge/response logins (its README lists them). The parser's error names the option.
+- In the TUI the application's terminal is a dumb one that shows plain lines: a program that draws the whole screen (`vim`, `htop`, `less`) or needs every key (`ssh` to a shell with completion) is run with `--profile`, which gives it the real terminal. With `--profile` there are no tabs, and the profile cannot be switched while the application runs.
 - Flatpak and Snap applications are not tested.
 
 ## 18. Milestones
@@ -398,6 +453,7 @@ A step that says so makes a proof with `scripts/tui-proof.sh`: the real program,
 | M1 Profiles and the VPN | v0.2.0 | The store of profiles; connecting a stored profile to a real OpenVPN server in a test |
 | M2 The namespace | v0.3.0 | The keeper, the TUN device, addresses, routes, DNS, the application, the pump, the session; the refusals of §14 are tested |
 | M3 The command line | v0.4.0 | `tube --profile <name> <application>` works end to end against a real server |
-| M4 The TUI | v0.5.0 | `tube <application>`: the pages of §13, connect and run |
-| M5 Reconnecting | v0.6.0 | D14 |
-| M6 Release | v0.7.0 | `README.md`, `docs/GUIDE.md`, `docs/SECURITY.md`, the release build, the manual checks listed for the user |
+| M4 A session that changes | v0.5.0 | Reconnecting (D14); disconnecting and switching (D17); the session's status; the log of a terminal |
+| M5 The TUI: the profiles | v0.6.0 | `tube <application>`: the pages of §13.1 to §13.7; selecting a profile connects and runs the application |
+| M6 The TUI: the running application | v0.7.0 | The run screen: the Status, Output and Network tabs (D16, D17, D18) |
+| M7 Release | v0.8.0 | `README.md`, `docs/GUIDE.md`, `docs/SECURITY.md`, the release build, the manual checks listed for the user |
