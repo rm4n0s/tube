@@ -6,7 +6,7 @@ package app
 
 // devVersion is the version being developed. It is what Version returns for a build that is not
 // a release build. Bump it when a version is published (CLAUDE.md "Git and GitHub").
-const devVersion = "0.2.0-dev"
+const devVersion = "0.3.0-dev"
 
 // buildVersion is set by a release build (scripts/build-release.sh, with -ldflags -X) and by
 // nothing else: the code never assigns it.
