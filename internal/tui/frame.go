@@ -33,6 +33,9 @@ func (m Model) View() tea.View {
 	lines := make([]string, 0, m.height)
 	lines = append(lines, fit(m.title(), m.width), m.rule())
 	body := m.body()
+	if m.ask != nil {
+		body = overlay(body, m.ask.q.box(m.width, m.styles), m.width, m.pageHeight())
+	}
 	for i := range m.pageHeight() {
 		line := ""
 		if i < len(body) {
@@ -60,15 +63,19 @@ func (m Model) rule() string { return m.styles.dim.Render(strings.Repeat("─", 
 // messageLine is the message or the error.
 func (m Model) messageLine() string {
 	if m.isError {
-		return m.styles.err.Render(m.message)
+		return m.styles.err.Render(clean(m.message))
 	}
-	return m.message
+	return clean(m.message)
 }
 
 // footer is the keys of the page.
 func (m Model) footer() string {
 	var parts []string
-	for _, b := range footerBindings(m.page, len(m.snap.Target) > 0) {
+	p := m.page
+	if m.ask != nil {
+		p = pageQuestion
+	}
+	for _, b := range footerBindings(p, len(m.snap.Target) > 0) {
 		parts = append(parts, m.styles.key.Render(b.keys)+" "+b.what)
 	}
 	return strings.Join(parts, "   ")
@@ -76,9 +83,11 @@ func (m Model) footer() string {
 
 // body is the page's lines.
 func (m Model) body() []string {
-	switch m.page {
-	case pageHelp:
+	switch {
+	case m.page == pageHelp:
 		return m.helpBody()
+	case m.page == pageAdd && m.add != nil:
+		return m.addBody()
 	}
 	return m.profilesBody()
 }

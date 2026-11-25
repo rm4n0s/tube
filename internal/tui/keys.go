@@ -9,6 +9,9 @@ type page int
 const (
 	pageProfiles page = iota
 	pageHelp
+	pageAdd
+	// pageQuestion is not a page: its keys are the ones of an open question.
+	pageQuestion
 )
 
 // binding is a key, or keys, and what it does on a page.
@@ -34,6 +37,10 @@ func bindings(withTarget bool) []pageBindings {
 		{"Profiles", pageProfiles, []binding{
 			{"↑↓ jk", "move"}, enter, {"a", "add"}, {"e", "open"}, {"d", "delete"}, {"?", "keys"}, {"q", "quit"},
 		}},
+		{"Add", pageAdd, []binding{
+			{"tab", "complete"}, {"↑↓", "field"}, {"enter", "add"}, {"esc", "back"},
+		}},
+		{"Question", pageQuestion, []binding{{"y", "yes"}, {"n esc enter", "no"}}},
 		{"Keys", pageHelp, []binding{{"any key", "close"}}},
 	}
 }

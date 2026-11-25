@@ -1,0 +1,30 @@
+Tube   select a profile to run firefox                                                              
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+  Path of the .ovpn file                                                                            
+  /vpn/home                                                                                         
+                                                                                                    
+  Name                                                                                              
+  the file's name                                                                                   
+                                                                                                    
+  home.ovpn     homelab.ovpn                                                                        
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+tab complete   ↑↓ field   enter add   esc back                                                      

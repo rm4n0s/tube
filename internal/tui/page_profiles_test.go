@@ -4,6 +4,7 @@ package tui
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -114,7 +115,7 @@ func TestQuitKeys(t *testing.T) {
 
 func TestKeysOfLaterSteps(t *testing.T) {
 	h := newHarness(t, apptest.Sample(), 100, 30)
-	h.key("a")
+	h.key("e")
 	h.has(notBuilt)
 	h.key("down")
 	if strings.Contains(h.screen(), notBuilt) {
@@ -129,15 +130,31 @@ func TestKeysOfLaterSteps(t *testing.T) {
 	}
 }
 
+// sgr matches the escape sequences that the styles draw.
+var sgr = regexp.MustCompile("\x1b\\[[0-9;:]*m")
+
 func TestHostileNames(t *testing.T) {
 	f := apptest.Sample()
-	f.Snap.Profiles[1].Name = "evil�[2J�]0;x"
+	f.Snap.Profiles[1].Name = "evil\x1b[2J\x1b]0;x"
+	f.Snap.Profiles[2].Remotes = []string{"host\x1b[31m\u009b1;1H"}
+	f.Snap.Target = []string{"ping\x1b]2;title\x07"}
 	f.Snap.Now = f.Snap.Now.Add(time.Minute)
 	h := newHarness(t, f, 100, 30)
-	h.has("evil�[2J")
-	for _, c := range []byte(h.screen()) {
-		if c < 0x20 && c != '\n' {
-			t.Fatalf("the screen has the byte %#x", c)
+	h.has("evil [2J ]0;x")
+	h.has("host [31m 1;1H")
+	h.has("ping ]2;title ")
+	if f.Snap.Profiles[1].Name != "evil\x1b[2J\x1b]0;x" {
+		t.Error("the TUI changed the app's snapshot")
+	}
+	// The screen of the harness strips the escape sequences of the styles; the raw view may
+	// have only those (SGR, "ESC [ ... m"), and no other control character.
+	raw := sgr.ReplaceAllString(h.m().View().Content, "")
+	for _, c := range []byte(raw) {
+		if (c < 0x20 && c != '\n') || c == 0x7f {
+			t.Fatalf("the view has the byte %#x: %q", c, raw)
 		}
+	}
+	if strings.ContainsRune(raw, '\u009b') {
+		t.Fatal("the view has a C1 control")
 	}
 }

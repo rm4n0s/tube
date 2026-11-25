@@ -89,11 +89,42 @@ func (m Model) profilesKey(name string) (Model, tea.Cmd) {
 		return m, tea.Quit
 	case "?":
 		m.page = pageHelp
-	case "enter", "a", "e", "d":
-		// TODO(step 5.3, 5.4, 5.5): add, delete, the profile's page, connecting.
+	case "a":
+		return m.openAdd(), nil
+	case "d":
+		return m.askDelete(), nil
+	case "enter", "e":
+		// TODO(step 5.4, 5.5): the profile's page, connecting.
 		m.setNotice(notBuilt)
 	default:
 		m.list.key(name)
 	}
 	return m, nil
+}
+
+// deletedMsg is the end of a delete: the profile's name, or the error.
+type deletedMsg struct {
+	name string
+	err  error
+}
+
+// askDelete asks whether to delete the selected profile.
+func (m Model) askDelete() Model {
+	if len(m.snap.Profiles) == 0 {
+		return m
+	}
+	p := m.snap.Profiles[m.list.selected()]
+	a, ctx := m.app, m.ctx
+	m.ask = &asking{
+		q: question{
+			text: "Delete the profile \"" + p.Name + "\"? Its copy of the .ovpn file is removed; the file you added it from is not touched.",
+			yes:  "Delete",
+		},
+		onYes: func(m Model) (Model, tea.Cmd) {
+			return m, func() tea.Msg {
+				return deletedMsg{name: p.Name, err: a.DeleteProfile(ctx, p.ID)}
+			}
+		},
+	}
+	return m
 }

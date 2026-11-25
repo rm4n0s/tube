@@ -1,0 +1,30 @@
+Tube   select a profile to run true
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  Path of the .ovpn file
+  /tmp/tmp.xx6OrrZ6h3/bad.ovpn
+
+  Name
+  the file's name
+
+  The profile uses the option "comp-lzo" on line 3, which Tube does not support: compression is
+  not supported. (UnsupportedOption)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+tab complete   ↑↓ field   enter add   esc back

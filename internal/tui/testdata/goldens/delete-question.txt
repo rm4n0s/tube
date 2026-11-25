@@ -1,0 +1,30 @@
+Tube   select a profile to run firefox                                                              
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Name                                    Server                                        Last used   
+  0123456789abcdef                        broken: its profile cannot be read: a mistake on line 3   
+> Home                                    home.example.net:1194 udp                     1 hour ago  
+  Work                                    vpn1.example.com:1194 udp +1        password  3 days ago  
+  work-backup                             backup.example.com:1194 udp                   never       
+  東京-long-name-long-name-long-name-lo…  far.example.org:1194 udp                      2026-10-16  
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                  ╭──────────────────────────────────────────────────────────────╮                  
+                  │ Delete the profile "Home"? Its copy of the .ovpn file is     │                  
+                  │ removed; the file you added it from is not touched.          │                  
+                  │                                                              │                  
+                  │ [y] Delete   [n] Cancel                                      │                  
+                  ╰──────────────────────────────────────────────────────────────╯                  
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+y yes   n esc enter no                                                                              

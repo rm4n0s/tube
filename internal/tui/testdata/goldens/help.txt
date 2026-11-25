@@ -1,22 +1,22 @@
 Tube   select a profile to run firefox                                                              
 ────────────────────────────────────────────────────────────────────────────────────────────────────
-Profiles                                                                                            
-  ↑↓ jk      move                                                                                   
-  enter      run                                                                                    
-  a          add                                                                                    
-  e          open                                                                                   
-  d          delete                                                                                 
-  ?          keys                                                                                   
-  q          quit                                                                                   
-                                                                                                    
-Keys                                                                                                
-  any key    close                                                                                  
+  Profiles — ↑↓ jk: move · enter: run · a: add · e: open · d: delete · ?: keys · q: quit            
+  Add — tab: complete · ↑↓: field · enter: add · esc: back                                          
+  Question — y: yes · n esc enter: no                                                               
+  Keys — any key: close                                                                             
                                                                                                     
 Tube runs one application through a VPN, and only that application: nothing else of the machine uses
 it.                                                                                                 
 Without the VPN the application has no network at all: Tube never lets it use the machine's.        
 A program that hands its work to one that already runs (a second firefox, a terminal's server) is   
 not in the VPN.                                                                                     
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
                                                                                                     
                                                                                                     
                                                                                                     

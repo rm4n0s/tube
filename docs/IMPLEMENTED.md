@@ -245,3 +245,15 @@ The log of the finished steps of `docs/IMPLEMENTATION.md`, in order (its rule 11
   - `tui.Options` has an unexported size for a program without a terminal, for the tests of `Run`; `TuiRunFailed` is tested with an input that fails.
   - The tests of `internal/tui` assert routes with `HasRoute` themselves: the TUI may not import `errtest` (SPEC §4.2 rule 2, which covers test files).
   - The fixture's generator gives `profilestest` a `testing.TB` of its own that ends the program on `Fatalf`; it was run with `TZ=UTC`, so that the fixture says nothing of this machine's time zone.
+
+## Step 5.3: Adding and deleting
+- Date: 2026-11-25
+- What was done: the text `field` (cursor, paste, limit, placeholder, secret); the `question` box drawn over the page, which takes every key (`y` yes; `n`, `esc`, `enter` no); the completion of paths (`complete`: `~`, common prefix by whole runes, folders with `/`, hidden names only when asked, names cleaned); the add page (path and name, `tab` completes, `enter` adds, `esc` goes back, the error of the app in a sentence until the next key, "Adding…" while it runs, the question for a profile that runs scripts and the add again without them on yes); `d` asks before deleting the selected profile. After an add, the new profile is selected and the message says "Added <name>."; after a delete, "Deleted <name>.". The TUI now cleans every text of a snapshot (names, servers, reasons, the application's arguments), the message line and the add page's error before it draws them.
+- Checks: `scripts/checks.sh` passed, with the tests against the real server. Every golden file was read (`add-empty`, `add-candidates`, `add-error`, `delete-question`, and `help`, changed).
+- Proofs: `docs/implemented-proof-images/5.3-add.txt` (the sentence of the parser for `comp-lzo` on line 3) and `5.3-delete.txt` (the question over the list, `[y] Delete   [n] Cancel`, the question's keys in the footer); read, and they show what the step describes. No tmux or tube process was left.
+- Manual checks: none
+- Differences from the plan or the spec:
+  - The help page has one wrapped line per page ("Profiles — ↑↓ jk: move · …"), so that it fits 40×10 with the keys of the add page and the question.
+  - The completion runs as a command (`completedMsg`), not inside `Update`, since it reads folders.
+  - The test of a real `app.App` gives the folders through the App's environment (`TUBE_CONFIG_DIR`, `TUBE_STATE_DIR`, `XDG_RUNTIME_DIR`, `HOME`), not through `storagetest.Isolate`: the TUI may not import the core's helpers (SPEC §4.2 rule 2). Its broken profile is typed as `~/bad.ovpn` in that home folder, so the golden file does not hold a temporary path.
+  - The test of hostile names of step 5.2 held U+FFFD where it meant ESC, and checked the screen with the styles stripped, so it did not see that the escape sequences of a name reached the terminal raw. It now uses real ESC and C1 bytes and checks the raw view; the TUI cleans the snapshot (above).

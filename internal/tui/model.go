@@ -8,6 +8,7 @@ package tui
 
 import (
 	"context"
+	"os"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -53,9 +54,19 @@ type Model struct {
 
 	page page
 	list list
+	// selectID is a profile to select when the next snapshot comes (a new one).
+	selectID string
+	// add is the add page's state, while it is open.
+	add *addPage
+	// ask is the open question; it gets every key.
+	ask *asking
 	// message is the line above the keys; isError draws it as an error.
 	message string
 	isError bool
+
+	// home and readDir are for the completion of paths.
+	home    string
+	readDir func(dir string) ([]os.DirEntry, error)
 
 	result Result
 }
@@ -65,7 +76,9 @@ func NewModel(ctx context.Context, a app.Application, clk clock.Clock) Model {
 	if clk == nil {
 		clk = clock.System()
 	}
-	return Model{ctx: ctx, app: a, clock: clk, styles: newStyles(), page: pageProfiles}
+	// Without a home folder, "~" is not completed; nothing else needs it.
+	home, _ := os.UserHomeDir()
+	return Model{ctx: ctx, app: a, clock: clk, styles: newStyles(), page: pageProfiles, home: home, readDir: defaultReadDir}
 }
 
 // Result is what the user chose.
@@ -96,6 +109,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.now = m.clock.Now()
 	case doneMsg:
 		m.setError(msg.err)
+	case addedMsg:
+		m, cmd := m.added(msg)
+		m.scroll()
+		return m, cmd
+	case completedMsg:
+		m = m.completed(msg)
+	case deletedMsg:
+		if msg.err != nil {
+			m.setError(msg.err)
+		} else {
+			m.setNotice("Deleted " + msg.name + ".")
+		}
+		return m, m.readSnapshot()
+	case tea.PasteMsg:
+		if m.ask == nil && m.page == pageAdd {
+			m = m.addPaste(msg.Content)
+		}
 	case tea.KeyPressMsg:
 		return m.key(msg)
 	}
@@ -114,8 +144,12 @@ func (m *Model) takeSnapshot(msg snapshotMsg) {
 	if m.loaded && m.list.selected() < len(m.snap.Profiles) {
 		selected = m.snap.Profiles[m.list.selected()].ID
 	}
-	m.snap, m.now = msg.snap, msg.snap.Now
+	m.snap, m.now = cleanSnapshot(msg.snap), msg.snap.Now
 	m.list.setLen(len(m.snap.Profiles))
+	if m.selectID != "" {
+		selected, m.selectID = m.selectID, ""
+		m.loaded = true
+	}
 	if !m.loaded {
 		m.loaded = true
 		m.list.selectIndex(latestUsed(m.snap.Profiles))
@@ -126,6 +160,28 @@ func (m *Model) takeSnapshot(msg snapshotMsg) {
 			m.list.selectIndex(i)
 		}
 	}
+}
+
+// cleanSnapshot is a copy of the snapshot whose texts are safe to draw: the core sanitizes what it
+// reads, but the TUI does not trust a snapshot to have no control character.
+func cleanSnapshot(snap app.Snapshot) app.Snapshot {
+	target := make([]string, len(snap.Target))
+	for i, a := range snap.Target {
+		target[i] = clean(a)
+	}
+	snap.Target = target
+	profiles := make([]app.Profile, len(snap.Profiles))
+	for i, p := range snap.Profiles {
+		p.Name, p.Broken = clean(p.Name), clean(p.Broken)
+		remotes := make([]string, len(p.Remotes))
+		for j, r := range p.Remotes {
+			remotes[j] = clean(r)
+		}
+		p.Remotes = remotes
+		profiles[i] = p
+	}
+	snap.Profiles = profiles
+	return snap
 }
 
 // latestUsed is the index of the profile used last, or 0.
@@ -166,10 +222,22 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	}
 	var cmd tea.Cmd
-	switch m.page {
-	case pageHelp:
+	switch {
+	case m.ask != nil:
+		yes, ok := m.ask.q.answer(name)
+		if !ok {
+			return m, nil
+		}
+		ask := m.ask
+		m.ask = nil
+		if yes {
+			m, cmd = ask.onYes(m)
+		}
+	case m.page == pageHelp:
 		m.page = pageProfiles
-	case pageProfiles:
+	case m.page == pageAdd:
+		m, cmd = m.addKey(msg)
+	case m.page == pageProfiles:
 		m, cmd = m.profilesKey(name)
 	}
 	m.scroll()
