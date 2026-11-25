@@ -32,9 +32,6 @@ type (
 	doneMsg struct{ err error }
 )
 
-// notBuilt is the notice of a key whose page comes in a later step.
-const notBuilt = "not built yet"
-
 // Result is what the user chose in the TUI.
 type Result struct {
 	// Run says that the application is to be run (step 5.5).
@@ -61,6 +58,9 @@ type Model struct {
 	add *addPage
 	// prof is the state of a profile's page, while it is open.
 	prof *profilePage
+	// login and conn are the states of the login and the connecting pages.
+	login *loginPage
+	conn  *connecting
 	// ask is the open question; it gets every key.
 	ask *asking
 	// message is the line above the keys; isError draws it as an error.
@@ -146,6 +146,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.editorDone(msg)
 	case editEndedMsg:
 		return m.editEnded(msg)
+	case connectedMsg:
+		return m.connected(msg)
 	case tea.PasteMsg:
 		switch {
 		case m.ask != nil:
@@ -153,6 +155,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m = m.addPaste(msg.Content)
 		case m.page == pageProfile:
 			m = m.profilePaste(msg.Content)
+		case m.page == pageLogin:
+			m = m.loginPaste(msg.Content)
 		}
 	case tea.KeyPressMsg:
 		return m.key(msg)
@@ -250,6 +254,9 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	m.message, m.isError = "", false
 	name := msg.String()
 	if name == "ctrl+c" {
+		if m.conn != nil {
+			m.conn.cancel()
+		}
 		return m, tea.Quit
 	}
 	var cmd tea.Cmd
@@ -270,6 +277,10 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m, cmd = m.addKey(msg)
 	case m.page == pageProfile:
 		m, cmd = m.profileKey(msg)
+	case m.page == pageLogin:
+		m, cmd = m.loginKey(msg)
+	case m.page == pageConnecting:
+		m = m.connectingKey(name)
 	case m.page == pageProfiles:
 		m, cmd = m.profilesKey(name)
 	}

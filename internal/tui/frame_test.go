@@ -24,7 +24,7 @@ func TestTooSmall(t *testing.T) {
 func TestEveryLineFits(t *testing.T) {
 	for _, w := range []int{40, 60, 100, 137} {
 		for _, hgt := range []int{10, 30, 50} {
-			for _, page := range []string{"profiles", "help", "add", "question", "profile", "field"} {
+			for _, page := range []string{"profiles", "help", "add", "question", "profile", "field", "login", "connecting"} {
 				h := newHarness(t, apptest.Sample(), w, hgt)
 				switch page {
 				case "help":
@@ -34,6 +34,12 @@ func TestEveryLineFits(t *testing.T) {
 					h.typeText(strings.Repeat("/a-long-folder-name", 10))
 				case "question":
 					h.key("d")
+				case "login":
+					h.keys("down", "enter", "tab", "tab")
+				case "connecting":
+					m := h.m()
+					m, _ = m.connect("id-long", m.snap.Profiles[4].Name, nil, false, nil)
+					h.model = m
 				case "profile", "field":
 					h.keys("down", "e")
 					if page == "field" {

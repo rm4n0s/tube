@@ -100,8 +100,14 @@ func (m Model) profilesKey(name string) (Model, tea.Cmd) {
 			return m.openProfile(m.snap.Profiles[m.list.selected()].ID), nil
 		}
 	case "enter":
-		// TODO(step 5.5): connecting, or the profile's page without a target.
-		m.setNotice(notBuilt)
+		if len(m.snap.Profiles) == 0 {
+			break
+		}
+		p := m.snap.Profiles[m.list.selected()]
+		if len(m.snap.Target) == 0 {
+			return m.openProfile(p.ID), nil
+		}
+		return m.startConnect(p)
 	default:
 		m.list.key(name)
 	}

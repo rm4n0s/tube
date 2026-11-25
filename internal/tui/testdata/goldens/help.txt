@@ -3,6 +3,8 @@ Tube   select a profile to run firefox
   Profiles — ↑↓ jk: move · enter: run · a: add · e: open · d: delete · ?: keys · q: quit            
   Add — tab: complete · ↑↓: field · enter: add · esc: back                                          
   Profile — r: rename · u: user · n: DNS · t: edit · d: delete · enter: run · esc: back             
+  Login — tab ↑↓: field · space: remember · enter: connect · esc: back                              
+  Connecting — esc: cancel                                                                          
   Field — enter: save · esc: cancel                                                                 
   Question — y: yes · n esc enter: no                                                               
   Keys — any key: close                                                                             
@@ -12,8 +14,6 @@ it.
 Without the VPN the application has no network at all: Tube never lets it use the machine's.        
 A program that hands its work to one that already runs (a second firefox, a terminal's server) is   
 not in the VPN.                                                                                     
-                                                                                                    
-                                                                                                    
                                                                                                     
                                                                                                     
                                                                                                     

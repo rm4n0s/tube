@@ -11,6 +11,8 @@ const (
 	pageHelp
 	pageAdd
 	pageProfile
+	pageLogin
+	pageConnecting
 	// pageQuestion and pageField are not pages: their keys are the ones of an open question,
 	// and of a field open on a profile's page.
 	pageQuestion
@@ -47,6 +49,10 @@ func bindings(withTarget bool) []pageBindings {
 			{"tab", "complete"}, {"↑↓", "field"}, {"enter", "add"}, {"esc", "back"},
 		}},
 		{"Profile", pageProfile, profile},
+		{"Login", pageLogin, []binding{
+			{"tab ↑↓", "field"}, {"space", "remember"}, {"enter", "connect"}, {"esc", "back"},
+		}},
+		{"Connecting", pageConnecting, []binding{{"esc", "cancel"}}},
 		{"Field", pageField, []binding{{"enter", "save"}, {"esc", "cancel"}}},
 		{"Question", pageQuestion, []binding{{"y", "yes"}, {"n esc enter", "no"}}},
 		{"Keys", pageHelp, []binding{{"any key", "close"}}},

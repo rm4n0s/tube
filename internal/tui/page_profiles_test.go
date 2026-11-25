@@ -113,12 +113,13 @@ func TestQuitKeys(t *testing.T) {
 	}
 }
 
-func TestKeysOfLaterSteps(t *testing.T) {
+func TestKeysClearTheMessage(t *testing.T) {
 	h := newHarness(t, apptest.Sample(), 100, 30)
+	h.key("home")
 	h.key("enter")
-	h.has(notBuilt)
+	h.has("This profile cannot be used: its profile cannot be read")
 	h.key("down")
-	if strings.Contains(h.screen(), notBuilt) {
+	if strings.Contains(h.screen(), "cannot be used") {
 		t.Error("a key did not clear the message line")
 	}
 	// Text that is typed or pasted on the list does nothing.

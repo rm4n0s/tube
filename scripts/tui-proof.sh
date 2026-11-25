@@ -3,10 +3,12 @@
 # it isolated (scripts/isolated.sh) in a private tmux server, sends keys, and saves the screen as
 # text. The user's own tmux, its server and its configuration are never touched.
 #
-#   scripts/tui-proof.sh <out.txt> [--config <fixture dir>] [--size 100x30] [--wait-first <regex>]
+#   scripts/tui-proof.sh <out.txt> [--config <fixture dir>] [--config-in-place] [--size 100x30] [--wait-first <regex>]
 #                        [--keys '<tmux keys>' | --text '<text>' | --wait '<regex>']... -- [tube arguments]
 #
 #   --config <dir>       the configuration folder to copy in (scripts/testdata/three-profiles)
+#   --config-in-place    use the folder of --config as it is, not a copy: a profile added in one
+#                        call is there in the next
 #   --size <cols>x<rows> the size of the terminal; 100x30 by default
 #   --wait-first <re>    wait until a line of the screen matches; "Tube" by default
 #   --keys '<keys>'      tmux key names (a Enter Escape C-c), separated by spaces; then 0.3 s
@@ -18,7 +20,7 @@
 set -euo pipefail
 
 usage() {
-	echo "usage: scripts/tui-proof.sh <out.txt> [--config <dir>] [--size 100x30] [--wait-first <regex>] [--keys '<keys>' | --text '<text>' | --wait '<regex>']... -- [tube arguments]" >&2
+	echo "usage: scripts/tui-proof.sh <out.txt> [--config <dir>] [--config-in-place] [--size 100x30] [--wait-first <regex>] [--keys '<keys>' | --text '<text>' | --wait '<regex>']... -- [tube arguments]" >&2
 	exit 64
 }
 
@@ -33,6 +35,7 @@ done
 out="$1"
 shift
 config=""
+in_place=0
 size="100x30"
 wait_first="Tube"
 steps=()
@@ -47,6 +50,10 @@ while [[ $# -gt 0 ]]; do
 		*) steps+=("$1" "$2") ;;
 		esac
 		shift 2
+		;;
+	--config-in-place)
+		in_place=1
+		shift
 		;;
 	--)
 		shift
@@ -74,10 +81,17 @@ trap cleanup EXIT
 (cd "$root" && go build -o "$tmp/tube" ./cmd/tube)
 
 isolated=("$root/scripts/isolated.sh")
-if [[ -n "$config" ]]; then
+program=("$tmp/tube")
+if [[ $in_place -eq 1 ]]; then
+	[[ -n "$config" && -d "$config" ]] || {
+		echo "tui-proof.sh: --config-in-place needs the folder of --config" >&2
+		exit 64
+	}
+	program=(env "TUBE_CONFIG_DIR=$(cd "$config" && pwd)" "$tmp/tube")
+elif [[ -n "$config" ]]; then
 	isolated+=(--config "$config")
 fi
-command="exec timeout -k 2 120 $(printf '%q ' "${isolated[@]}" -- "$tmp/tube" "$@")"
+command="exec timeout -k 2 120 $(printf '%q ' "${isolated[@]}" -- "${program[@]}" "$@")"
 tm new-session -d -s proof -x "$cols" -y "$rows" "$command"
 tm set-option -t proof remain-on-exit on >/dev/null
 

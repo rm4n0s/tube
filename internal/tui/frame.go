@@ -101,6 +101,10 @@ func (m Model) body() []string {
 		return m.addBody()
 	case m.page == pageProfile:
 		return m.profileBody()
+	case m.page == pageLogin && m.login != nil:
+		return m.loginBody()
+	case m.page == pageConnecting && m.conn != nil:
+		return m.connectingBody()
 	}
 	return m.profilesBody()
 }

@@ -95,6 +95,9 @@ func (m Model) profileKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	case "d":
 		return m.askDelete(p), nil
 	}
+	if name == "enter" && len(m.snap.Target) > 0 {
+		return m.startConnect(p)
+	}
 	if p.Broken != "" {
 		return m, nil
 	}
@@ -110,11 +113,6 @@ func (m Model) profileKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		pp.field.set(strings.Join(p.DNS, ", "))
 	case "t":
 		return m.startEdit(p.ID)
-	case "enter":
-		// TODO(step 5.5): connecting.
-		if len(m.snap.Target) > 0 {
-			m.setNotice(notBuilt)
-		}
 	}
 	return m, nil
 }

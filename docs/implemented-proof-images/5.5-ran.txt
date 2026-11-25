@@ -1,0 +1,30 @@
+tube: connected to test; running ping
+PING 10.8.0.1 (10.8.0.1) 56(84) bytes of data.
+64 bytes from 10.8.0.1: icmp_seq=1 ttl=64 time=0.296 ms
+64 bytes from 10.8.0.1: icmp_seq=2 ttl=64 time=0.574 ms
+
+--- 10.8.0.1 ping statistics ---
+2 packets transmitted, 2 received, 0% packet loss, time 1029ms
+rtt min/avg/max/mdev = 0.296/0.435/0.574/0.139 ms
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Pane is dead (status 0, Wed Nov 25 03:35:15 2026)
