@@ -172,7 +172,7 @@ func TestBrowseWithTheKeys(t *testing.T) {
 	h.has("Name   work")
 	h.typeText("Office")
 	h.key("enter")
-	if got := f.Calls(); !slices.Equal(got, []string{"AddProfile(~/Downloads/work.ovpn, Office, false)"}) {
+	if got := f.Calls(); !slices.Equal(got, []string{"AddProfile(~/Downloads/work.ovpn, Office, , false)"}) {
 		t.Errorf("Calls = %q", got)
 	}
 	h.has("Added Office.")
@@ -207,7 +207,7 @@ func TestWhereTheAddPageStarts(t *testing.T) {
 	h.key("a")
 	h.wantFolder(sampleHome, "Documents", "", addFocusFolder)
 	h.keys("down", "enter", "end", "enter", "enter")
-	if got := f.Calls(); !slices.Equal(got, []string{"AddProfile(~/Downloads/work.ovpn, , false)"}) {
+	if got := f.Calls(); !slices.Equal(got, []string{"AddProfile(~/Downloads/work.ovpn, , , false)"}) {
 		t.Fatalf("Calls = %q", got)
 	}
 	f.Snap.AddFolder = sampleCwd
@@ -246,7 +246,7 @@ func TestBrowseWithTheMouse(t *testing.T) {
 		t.Errorf("a click in the Name field: the focus is %d", p.focus)
 	}
 	h.clickOn("[ Add ]")
-	if got := f.Calls(); !slices.Equal(got, []string{"AddProfile(~/Downloads/work.ovpn, , false)"}) {
+	if got := f.Calls(); !slices.Equal(got, []string{"AddProfile(~/Downloads/work.ovpn, , , false)"}) {
 		t.Errorf("Calls = %q", got)
 	}
 	h.has("Added work.")
@@ -267,16 +267,16 @@ func TestTheWheelScrollsTheFolder(t *testing.T) {
 	m.readDir = fakeDirs(dirs)
 	h.model = m
 	h.key("a")
-	h.has(" 1-19 of 65 ")
+	h.has(" 1-18 of 65 ")
 	h.wheel(2)
-	h.has(" 7-25 of 65 ")
+	h.has(" 7-24 of 65 ")
 	if p := h.m().add; p.br.list.top != 6 || p.br.list.selected() != 6 {
 		t.Errorf("the first row is %d, the selected one %d", p.br.list.top, p.br.list.selected())
 	}
 	h.wheel(-1)
-	h.has(" 4-22 of 65 ")
+	h.has(" 4-21 of 65 ")
 	h.key("end")
-	h.has(" 47-65 of 65 ")
+	h.has(" 48-65 of 65 ")
 }
 
 func TestTheListFollowsTheFile(t *testing.T) {
@@ -352,16 +352,18 @@ func TestTheFocusOfTheAddPage(t *testing.T) {
 		{"it starts on the list", 100, 30, nil, addFocusFolder},
 		{"tab leaves the list", 100, 30, []string{"tab"}, addFocusPath},
 		{"down goes to the name", 100, 30, []string{"tab", "down"}, addFocusName},
-		{"tab goes on", 100, 30, []string{"tab", "down", "tab"}, addFocusAll},
-		{"and around", 100, 30, []string{"tab", "down", "tab", "tab"}, addFocusFolder},
-		{"down too", 100, 30, []string{"tab", "down", "down", "down"}, addFocusFolder},
+		{"tab goes to the DNS", 100, 30, []string{"tab", "down", "tab"}, addFocusDNS},
+		{"tab goes on", 100, 30, []string{"tab", "down", "tab", "tab"}, addFocusAll},
+		{"and around", 100, 30, []string{"tab", "down", "tab", "tab", "tab"}, addFocusFolder},
+		{"down too", 100, 30, []string{"tab", "down", "down", "down", "down"}, addFocusFolder},
 		{"up goes back", 100, 30, []string{"tab", "down", "down", "up", "up", "up"}, addFocusFolder},
-		{"shift+tab goes back", 100, 30, []string{"shift+tab", "shift+tab"}, addFocusName},
+		{"shift+tab goes back", 100, 30, []string{"shift+tab", "shift+tab"}, addFocusDNS},
 		{"tab completes in the File field", 100, 30, []string{"tab", "tab"}, addFocusPath},
 		{"no list: it starts on the File", 40, 10, nil, addFocusPath},
-		{"no list: two fields", 40, 10, []string{"down"}, addFocusName},
-		{"no list: around", 40, 10, []string{"down", "down"}, addFocusPath},
-		{"no list: shift+tab", 40, 10, []string{"shift+tab"}, addFocusName},
+		{"no list: three fields", 40, 10, []string{"down"}, addFocusName},
+		{"no list: the DNS", 40, 10, []string{"down", "down"}, addFocusDNS},
+		{"no list: around", 40, 10, []string{"down", "down", "down"}, addFocusPath},
+		{"no list: shift+tab", 40, 10, []string{"shift+tab"}, addFocusDNS},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -383,7 +385,7 @@ func TestTheFocusOfTheAddPage(t *testing.T) {
 		}
 		h.typeText("/tmp/x.ovpn")
 		h.key("enter")
-		if got := f.Calls(); !slices.Equal(got, []string{"AddProfile(/tmp/x.ovpn, , false)"}) {
+		if got := f.Calls(); !slices.Equal(got, []string{"AddProfile(/tmp/x.ovpn, , , false)"}) {
 			t.Errorf("Calls = %q", got)
 		}
 	})

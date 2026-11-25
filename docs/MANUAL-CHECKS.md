@@ -164,3 +164,17 @@ With a real provider's profile that asks for a password:
 ```
 
 Expected: the login page has `[x] remember the password`; after a login that worked, quit, and start again: `enter` on the profile connects at once, without the login page. The profile's page (`e`) says `Password  remembered`; `p`, `y` forgets it, and the next `enter` shows the login page again. `./tube --profile <name> curl -s https://ifconfig.me` prints the VPN's address without asking for anything while the password is remembered.
+
+## A profile file on the command line, and the DNS field (a change outside the steps, 2026-11-25)
+
+The tests do this against a server of their own; only a real provider's file shows it with a real login. Use a provider's `.ovpn` file that is not a profile of Tube yet (or delete its profile in the TUI first).
+
+```sh
+go build -o tube ./cmd/tube
+./tube --profile <the path of the .ovpn file, with or without .ovpn> curl -s https://ifconfig.me; echo
+./tube --profile <the same path> curl -s https://ifconfig.me; echo
+./tube
+```
+
+Expected, in the first run: `tube: added the profile "<the file's name>"`, then the questions `User name: `, `Password: ` (nothing is shown while you type), `DNS servers (empty: the ones of the VPN): ` (press Enter) and `Save the user name and the password with the profile? [Y/n] ` (press Enter), and then the VPN's address. The second run asks nothing and prints the VPN's address again. In the third, `a` shows the add page with the three fields File, Name and DNS; the profile's page (`e`) of the profile that the first run added says `Password  remembered`.
+

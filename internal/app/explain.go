@@ -19,6 +19,8 @@ import (
 const (
 	maxPiece   = 64
 	maxMessage = 300
+	// maxPath is the length of a piece that is a path: its end is what tells the files apart.
+	maxPath = maxPathInError
 )
 
 // kindSentences are the sentences of the kinds of a failure of a connection.
@@ -98,23 +100,25 @@ func problemSentence(p profiles.Problem) string {
 	return "The profile cannot be read."
 }
 
-// meta is a value of the error's metadata as text that is safe to show, or "".
-func meta(appErr *errors.Error, key string) string {
+// meta is a value of the error's metadata as text that is safe to show, limit characters at
+// most, or "".
+func meta(appErr *errors.Error, key string, limit int) string {
 	v, ok := appErr.Metadata[key]
 	if !ok {
 		return ""
 	}
-	return sanitize.Display(fmt.Sprint(v), maxPiece)
+	return sanitize.Display(fmt.Sprint(v), limit)
 }
 
 // tagSentence is a sentence of a Tag of Tube's: a format whose arguments are the values of the
 // error's metadata under keys, and the sentence for an error that lacks them ("" when the format
-// needs none).
+// needs none). paths says that the values may be paths, which are shown longer than a name.
 type tagSentence struct {
 	tags    []string
 	format  string
 	keys    []string
 	without string
+	paths   bool
 }
 
 // tagSentences are the sentences of the Tags that Tube knows, besides the kinds of failure of a
@@ -135,6 +139,10 @@ var tagSentences = []tagSentence{
 		format: "A profile can have " + strconv.Itoa(profiles.MaxDNS) + " DNS servers at most.",
 	},
 	{tags: []string{TagProfileNotFound}, format: "There is no profile called %q.", keys: []string{"name"}},
+	{
+		tags:   []string{TagNoProfileOrFile},
+		format: "There is no profile called %q, and no .ovpn file at that path.", keys: []string{"name"}, paths: true,
+	},
 	{
 		tags:   []string{TagProfileAmbiguous},
 		format: "More than one profile is called %q when the case is ignored. Write the name exactly.", keys: []string{"name"},
@@ -157,9 +165,13 @@ func sentenceOfTag(appErr *errors.Error) string {
 		if !slices.Contains(ts.tags, appErr.Tag) {
 			continue
 		}
+		limit := maxPiece
+		if ts.paths {
+			limit = maxPath
+		}
 		args := make([]any, len(ts.keys))
 		for i, k := range ts.keys {
-			v := meta(appErr, k)
+			v := meta(appErr, k, limit)
 			if v == "" && ts.without != "" {
 				return ts.without
 			}

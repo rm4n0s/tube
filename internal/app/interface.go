@@ -15,7 +15,7 @@ import (
 type Application interface {
 	Snapshot(ctx context.Context) (Snapshot, error)
 	Subscribe(f func()) (cancel func())
-	AddProfile(ctx context.Context, path, name string, withoutScripts bool) (string, error)
+	AddProfile(ctx context.Context, path, name, dns string, withoutScripts bool) (string, error)
 	RenameProfile(ctx context.Context, id, name string) error
 	SetUsername(ctx context.Context, id, username string) error
 	SetDNS(ctx context.Context, id, text string) error

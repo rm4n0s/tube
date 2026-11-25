@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 
 	"github.com/rm4n0s/errors"
@@ -50,7 +51,7 @@ type cli struct {
 	stdin  *os.File
 	stdout *os.File
 	stderr io.Writer
-	// tty is the terminal that asks for a password.
+	// tty is the terminal that Tube asks on, for what a run with --profile is missing.
 	tty string
 }
 
@@ -163,30 +164,48 @@ func (c cli) runTUI(ctx context.Context, a *app.App, f flags) int {
 	return statusInterrupted
 }
 
-// runApp connects the profile of --profile and runs the application, or runs the TUI.
+// runApp connects the profile of --profile and runs the application (docs/SPEC.md §11.1,
+// §11.2), or runs the TUI.
 func (c cli) runApp(ctx context.Context, a *app.App, f flags) int {
 	if f.profile == "" {
 		return c.runTUI(ctx, a, f)
 	}
-	found, err := a.FindProfile(ctx, f.profile)
+	// A mistake in --dns is told before anything is added or asked. They are the DNS servers
+	// of this run; saved or not, the profile's own are not used beside them.
+	if f.dnsGiven {
+		if err := a.UseDNS(f.dns); err != nil {
+			return c.fail(err)
+		}
+	}
+	found, err := c.findProfile(ctx, a, f.profile)
 	if err != nil {
 		return c.fail(err)
 	}
-	id := found.ID
-	// The credentials are the ones of --auth-file; else the remembered ones (the app takes
-	// them when none are given); else they are asked for on the terminal.
-	var creds *app.Credentials
-	if found.NeedsPassword && (f.authFile != "" || !found.HasPassword) {
-		got, err := c.credentials(f.authFile, found.Username)
-		if err != nil {
-			return c.fail(err)
-		}
-		creds = &got
+	if found.Added && !f.quiet {
+		c.say("added the profile " + strconv.Quote(found.Name))
 	}
-	// SIGINT, SIGTERM and SIGHUP cancel the connect. A script does not change the profile:
-	// nothing of the credentials is remembered, and nothing that was is forgotten.
+	// An answer about the DNS servers that a.UseDNS takes is in use for this run from then on.
+	pl, err := c.settle(f, found, a.UseDNS)
+	if err != nil {
+		return c.fail(err)
+	}
+	// Without a save the profile stays as it is: nothing of the credentials is remembered, and
+	// nothing that was is forgotten. With one, the DNS servers are kept now, and the user name
+	// and the password when the server took them.
+	remember := app.Remember{}
+	if pl.save {
+		if pl.dnsSet {
+			if err := a.SetDNS(ctx, found.ID, pl.dns); err != nil {
+				return c.fail(err)
+			}
+		}
+		if pl.creds != nil {
+			remember = app.Remember{User: true, Password: true}
+		}
+	}
+	// SIGINT, SIGTERM and SIGHUP cancel the connect.
 	connectCtx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
-	err = a.Connect(connectCtx, id, creds, app.Remember{})
+	err = a.Connect(connectCtx, found.ID, pl.creds, remember)
 	interrupted := connectCtx.Err() != nil && ctx.Err() == nil
 	stop()
 	if err != nil {
@@ -200,22 +219,6 @@ func (c cli) runApp(ctx context.Context, a *app.App, f flags) int {
 		c.say(app.Explain(err))
 	}
 	return status
-}
-
-// credentials reads the user name and the password from the file of --auth-file, or asks for
-// them on the terminal.
-func (c cli) credentials(authFile, username string) (app.Credentials, error) {
-	if authFile != "" {
-		return readAuthFile(authFile)
-	}
-	tty, err := openTerminal(c.tty)
-	if err != nil {
-		return app.Credentials{}, err
-	}
-	creds, err := askCredentials(tty, username)
-	// The terminal was only read; the credentials are what matters.
-	_ = tty.Close()
-	return creds, err
 }
 
 // runWithSignals runs the application. While it runs, SIGINT and SIGQUIT are caught and dropped

@@ -14,6 +14,7 @@ import (
 const (
 	addPathLabel       = "File"
 	addNameLabel       = "Name"
+	addDNSLabel        = "DNS"
 	addLabelWidth      = 6
 	addNamePlaceholder = "the file's name"
 	addAllText         = "all files"
@@ -24,8 +25,8 @@ const (
 	maxNameLen         = 64
 	// maxAddErrorLines is the number of lines that an error takes on the page, at most.
 	maxAddErrorLines = 3
-	// addFieldLines are the lines of the two fields and of the buttons.
-	addFieldLines = 3
+	// addFieldLines are the lines of the three fields and of the buttons.
+	addFieldLines = 4
 )
 
 // The parts of the add page that take the focus, from the top.
@@ -33,6 +34,7 @@ const (
 	addFocusFolder = iota
 	addFocusPath
 	addFocusName
+	addFocusDNS
 	addFocusAll
 )
 
@@ -51,7 +53,9 @@ type (
 
 // addPage is the state of the add page.
 type addPage struct {
-	path, name field
+	// path, name and dns are the fields: the profile file, the name of the profile, and its
+	// DNS servers (empty: the ones of the VPN).
+	path, name, dns field
 	// focus is the part that has the focus: addFocusFolder, ...
 	focus int
 	// br is the list of a folder, in which the file is chosen.
@@ -79,6 +83,7 @@ func (m Model) openAdd() (Model, tea.Cmd) {
 	m.add = &addPage{
 		path: field{limit: maxPathLen},
 		name: field{limit: maxNameLen, placeholder: addNamePlaceholder},
+		dns:  field{limit: maxDNSLen, placeholder: dnsPlaceholder},
 	}
 	start := m.startFolder()
 	dir := m.snap.AddFolder
@@ -124,11 +129,11 @@ func (m Model) folderHeight() int {
 func (m Model) folderShown() bool { return m.folderHeight() > 0 }
 
 // addStop is the part that takes the focus after the part focus (step 1), or before it (step
-// -1). Without the list of the folder there are only the two fields.
+// -1). Without the list of the folder there are only the three fields.
 func (m Model) addStop(focus, step int) int {
-	stops := []int{addFocusPath, addFocusName}
+	stops := []int{addFocusPath, addFocusName, addFocusDNS}
 	if m.folderShown() {
-		stops = []int{addFocusFolder, addFocusPath, addFocusName, addFocusAll}
+		stops = []int{addFocusFolder, addFocusPath, addFocusName, addFocusDNS, addFocusAll}
 	}
 	for i, s := range stops {
 		if s == focus {
@@ -176,6 +181,8 @@ func (m Model) addKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		}
 	case p.focus == addFocusName:
 		p.name.key(msg)
+	case p.focus == addFocusDNS:
+		p.dns.key(msg)
 	default:
 		before := p.path.value()
 		p.path.key(msg)
@@ -186,16 +193,17 @@ func (m Model) addKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	return m, nil
 }
 
-// addSubmit adds the profile of the File field, with the name of the Name field.
+// addSubmit adds the profile of the File field, with the name of the Name field and the DNS
+// servers of the DNS field.
 func (m Model) addSubmit() (Model, tea.Cmd) {
 	p := *m.add
 	m.add = &p
 	p.err, p.busy = "", true
-	return m, m.addProfile(p.path.value(), p.name.value(), false)
+	return m, m.addProfile(p.path.value(), p.name.value(), p.dns.value(), false)
 }
 
-// addPaste pastes into the Name field when it has the focus, and into the File field when it
-// has; with the focus on the list, the pasted text is the new path.
+// addPaste pastes into the Name or the DNS field when it has the focus, and into the File field
+// when it has; with the focus on the list, the pasted text is the new path.
 func (m Model) addPaste(text string) (Model, tea.Cmd) {
 	p := *m.add
 	m.add = &p
@@ -205,6 +213,9 @@ func (m Model) addPaste(text string) (Model, tea.Cmd) {
 	switch p.focus {
 	case addFocusName:
 		p.name.paste(text)
+		return m, nil
+	case addFocusDNS:
+		p.dns.paste(text)
 		return m, nil
 	case addFocusPath:
 		p.path.paste(text)
@@ -216,10 +227,10 @@ func (m Model) addPaste(text string) (Model, tea.Cmd) {
 }
 
 // addProfile is the command that adds the profile.
-func (m Model) addProfile(path, name string, withoutScripts bool) tea.Cmd {
+func (m Model) addProfile(path, name, dns string, withoutScripts bool) tea.Cmd {
 	a, ctx := m.app, m.ctx
 	return func() tea.Msg {
-		id, err := a.AddProfile(ctx, path, name, withoutScripts)
+		id, err := a.AddProfile(ctx, path, name, dns, withoutScripts)
 		return addedMsg{id: id, name: shownName(path, name), err: err}
 	}
 }
@@ -255,7 +266,7 @@ func (m Model) added(msg addedMsg) (Model, tea.Cmd) {
 	m.add = &p
 	p.busy = false
 	if options, ok := app.IsRunsScripts(msg.err); ok {
-		path, name := p.path.value(), p.name.value()
+		path, name, dns := p.path.value(), p.name.value(), p.dns.value()
 		m.ask = &asking{
 			q: question{
 				text: "This profile runs scripts (" + options + "). Tube never runs them, and sets the DNS of the application itself. Add it without them?",
@@ -267,7 +278,7 @@ func (m Model) added(msg addedMsg) (Model, tea.Cmd) {
 					p.busy = true
 					m.add = &p
 				}
-				return m, m.addProfile(path, name, true)
+				return m, m.addProfile(path, name, dns, true)
 			},
 		}
 		return m, nil
@@ -302,9 +313,12 @@ func (m Model) clickField(focus, width int) action {
 		p := *m.add
 		m.add = &p
 		p.err, p.focus = "", focus
-		if focus == addFocusName {
+		switch focus {
+		case addFocusName:
 			p.name.click(c.x, width)
-		} else {
+		case addFocusDNS:
+			p.dns.click(c.x, width)
+		default:
 			p.path.click(c.x, width)
 		}
 		return m, nil
@@ -321,8 +335,8 @@ func focusAdd(focus int) action {
 	}
 }
 
-// addBody is the add page: the list of a folder, the File and the Name fields, the error of the
-// last add, and the buttons.
+// addBody is the add page: the list of a folder, the File, the Name and the DNS fields, the error
+// of the last add, and the buttons.
 func (m Model) addBody() []line {
 	p := m.add
 	st := m.styles
@@ -349,6 +363,8 @@ func (m Model) addBody() []line {
 			append(text(p.path.view(width, p.focus == addFocusPath && !p.busy, st)).field(m.clickField(addFocusPath, width), focusAdd(addFocusPath))),
 		text(label(addNameLabel, addFocusName)).
 			append(text(name.view(width, p.focus == addFocusName && !p.busy, st)).field(m.clickField(addFocusName, width), focusAdd(addFocusName))),
+		text(label(addDNSLabel, addFocusDNS)).
+			append(text(p.dns.view(width, p.focus == addFocusDNS && !p.busy, st)).field(m.clickField(addFocusDNS, width), focusAdd(addFocusDNS))),
 	)
 	switch errLines := m.addErrorLines(max(m.width-4, 10)); {
 	case p.busy:

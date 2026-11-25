@@ -44,6 +44,8 @@ Tube runs one application through a VPN, and only that application. This file is
 | D26 | The password field draws a `*` for each character, never the characters. This replaces "drawn as nothing" of the first plan | the user, 2026-11-25 ("the password show ******** and not empty") |
 | D27 | The password of a profile can be remembered: in a file that only the user can read, in the profile's folder (§6.6). The login page has a mark for it, on by default, and a profile whose password is remembered connects without the login page | the user, 2026-11-25 ("make it remember password"); where it is kept: the user, 2026-11-25, asked ("A file by the profile") |
 | D28 | `tube firefox` (and `thunderbird`) always runs on a profile of its own, which Tube keeps between runs, unless the arguments choose a profile: it is then a process of its own, inside the VPN, whether or not the user's Firefox is open | the user, 2026-11-25 ("if the user has already open firefox, then the new firefox windows uses the default network of the user, not the VPN"; asked: "Tube's own profile") |
+| D29 | The DNS servers of a profile can be given when it is added: the add page has a field for them (§13.3). They can be changed afterwards on the profile's page, as before (§13.4) | the user, 2026-11-25 ("make it possible when adding/editing openvpn profile to also add the DNS") |
+| D30 | `--profile` also takes the path of an `.ovpn` file, written with or without `.ovpn`: the file is added when it is not a profile yet, and the application runs on the user's terminal, without the TUI (§11.1). What the run is missing (the user name, the password, the DNS servers) is asked on the terminal, one after the other, and then whether to save it; `--username`, `--password`, `--dns` and `--save` give the same without a question (§11.2) | the user, 2026-11-25 ("put a flag that will not open a TUI, but add the filename of the ovpn (with or without .ovpn) and start the application and show its output directly ... If username/password and dns missing, then ask them one by one and then ask to save them. And also if the user know that any of these missing, then use a common partner to add them without being interactive, like using a flag"). Chosen while it was built, and told to the user: it is `--profile` and no new option; the names of the options; when the DNS servers are asked for (§11.2); "yes" as the answer of an empty line to the save |
 
 ## 3. Platform and requirements
 
@@ -146,7 +148,7 @@ A folder `profiles/<id>/`, where `<id>` is 16 hexadecimal characters from `crypt
 
 ### 6.2 Adding
 
-The user gives the path of a `.ovpn` file and a name (the default is the file's name without `.ovpn`).
+The user gives the path of a `.ovpn` file, a name (the default is the file's name without `.ovpn`) and, when wanted, the DNS servers of the profile (§6.3, D29). The DNS servers are checked before anything else: a mistake in them adds nothing. `--profile` with a file adds it the same way, under the file's name and without DNS servers (§11.1).
 
 1. The profile is parsed with `ovpn.ParseFS` over the folder of the file, opened as an `os.Root`, so a name that leaves the folder, also through a symbolic link, is refused. The file system that Tube passes records the names that the parser opens: those are the files of the profile.
 2. Limits: the profile is at most 1 MiB (the parser's limit), each named file at most 1 MiB, and there are at most 16 of them (`ProfileFileTooLarge`, `ProfileTooManyFiles`).
@@ -175,7 +177,7 @@ The user name of a profile is remembered in `meta.json` (`username`). The passwo
 
 - A connect that was given credentials keeps, when it worked, what the caller says: the user name; the password (and the user name with it, without which it is of no use); or it forgets a password that was remembered, when the user was asked and did not want it kept. A connect that failed keeps nothing.
 - A connect that is given no credentials, for a profile that asks for them and has a remembered password, uses the remembered user name and password. A remembered password that the server refuses is a refused login like another; it stays until the user gives another one or forgets it.
-- A script (`--profile` with `--auth-file`) changes nothing: it remembers nothing and forgets nothing.
+- A run with `--profile` keeps the user name and the password only when the user said so: with `--save`, or with a yes to the question that follows what was asked on the terminal (§11.2). Without that it changes nothing: it remembers nothing and forgets nothing.
 - The profile's page forgets the password (§13.4).
 
 This is as private as the private key of the profile, which is in a file of the same mode beside it: who can read the user's files can read both. `docs/SECURITY.md` says so.
@@ -241,7 +243,7 @@ On `configure` the keeper, through rtnetlink (`internal/core/netlink`, never the
 
 ### 8.4 The names (DNS)
 
-The DNS servers of a run are the ones the user set for the profile (§6.3), else the ones the server pushed. Inside the mount namespace, after making every mount private:
+The DNS servers of a run are the ones the user set for the profile (§6.3), else the ones the server pushed; `--dns` gives the ones of one run in place of the profile's (§11.2). Inside the mount namespace, after making every mount private:
 
 1. The folders through which the C library reaches a resolver of the machine are covered with an empty `tmpfs`, when they exist: `/run/systemd/resolve`, `/run/nscd`, `/var/run/nscd`, `/run/avahi-daemon`. With the usual `nsswitch.conf`, `resolve` and `mdns` then are unavailable and the lookup goes on to `dns`.
 2. `/etc/resolv.conf`, wherever its symbolic link leads, has this content inside the namespace: a `nameserver` line for each DNS server (at most 3, the C library's limit), a `search` line when there are search domains, and `options edns0`. When the file's place is in a covered folder it is written there; else a file of the temporary folder is bind-mounted over it.
@@ -304,18 +306,57 @@ One run of an application: `session.Start` takes a connected tunnel, starts the 
 tube [options] [--] <application> [arguments...]    run the application through a VPN
 tube [options]                                      only keep the profiles (the TUI)
 
-  -p, --profile <name>    use this profile and do not show the TUI
-      --auth-file <path>  with --profile: a file with the user name on the first line and
-                          the password on the second
-  -q, --quiet             with --profile: write no lines of Tube's own while the application runs
-      --version           print the version
-  -h, --help              print this help
+  -p, --profile <name|file>  use this profile and do not show the TUI: the name of a profile,
+                             or an .ovpn file (".ovpn" may be left out), which is added when
+                             it is not a profile yet. What is missing is asked on the terminal
+      --username <name>      with --profile: the user name of the VPN
+      --password <password>  with --profile: the password of the VPN. The other users of this
+                             machine can see it in the list of processes: --auth-file is safer
+      --auth-file <path>     with --profile: a file with the user name on the first line and
+                             the password on the second
+      --dns <addresses>      with --profile: the DNS servers of the application, in place of
+                             the profile's ("9.9.9.9,1.1.1.1"; "" is the ones of the VPN)
+      --save                 with --profile: keep the user name, the password and the DNS
+                             servers of this run with the profile, without asking
+  -q, --quiet                with --profile: write no lines of Tube's own while the
+                             application runs
+      --version              print the version
+  -h, --help                 print this help
 ```
 
 - The options end at the first argument that is not one; everything after it is the application and its arguments, untouched.
 - **Without `--profile`**, Tube opens the TUI, which needs a terminal on standard input and output; without one Tube ends with an error that names `--profile`. The user selects a profile; the application starts on a pseudo-terminal and the TUI stays open (§13.8) until the user quits. Tube then exits with the application's status. When the user quits before a profile was selected, the status is 130 (0 when there was no application).
-- **With `--profile <name>`** there is no TUI: Tube connects, the application gets Tube's terminal (D19), and Tube exits with its status when it ends. The profile is the one with exactly that name, else the only one that has it when compared without case. With a profile that asks for a password, the credentials are the ones of `--auth-file`; without that option, the remembered ones, when the password is remembered (§6.6); else Tube asks on the terminal (the user name when none is remembered, then the password, without echo); with no terminal it is an error. `--profile` with no application is a mistake in the arguments. The file of `--auth-file` must be readable by the user only.
+- **With `--profile`** there is no TUI: Tube finds the profile (§11.1), settles what the run uses (§11.2), connects, the application gets Tube's terminal (D19), and Tube exits with its status when it ends.
+- Mistakes in the arguments (status 2): `--profile` with no application; `--auth-file`, `--username`, `--password`, `--dns` or `--save` without `--profile`; `--auth-file` together with `--username` or `--password`. Such an error names the option and never has its value, which may be a password.
 - `tube --version` prints `tube <version>`. The version is `devVersion` of `internal/app/version.go`, or the one that the release build sets.
+
+### 11.1 The profile of `--profile`
+
+The value is the name of a profile or the path of a profile file (D30). Tube tries, in this order, and takes the first that is there:
+
+1. The stored profile with exactly that name, else the only one that has it when compared without case. More than one of those, or one that cannot be used (§6.4), is an error, and nothing further is tried.
+2. When the value ends in `.ovpn` and has no `/`: the same for the value without `.ovpn` (`--profile work.ovpn` is the profile "work").
+3. The file at that path, then the file at that path with `.ovpn` added, when the value does not end in it. `~/` is the home folder, and a path that is not absolute is seen from the working folder. Only a regular file counts. Its name without `.ovpn` is the name of its profile: when a stored profile has that name (as in 1), that one is used, so the same command adds the file the first time and uses the profile every time after; else the file is added under that name (§6.2), and one of Tube's lines says so (`tube: added the profile "lab"`; not with `--quiet`).
+4. Else it is the error "There is no profile called "...", and no .ovpn file at that path.", which shows the value up to 512 characters.
+
+A file that runs scripts (§6.2) is added without them when the user answers the question of §6.2 with yes on the terminal (`[y/N]`: an empty line is no). Without a terminal it is not added, and Tube says where to add it.
+
+### 11.2 What a run with `--profile` uses
+
+**The user name and the password**, for a profile that asks for them, are the first of these that are there:
+
+1. the ones of the file of `--auth-file`, which must be readable by the user only;
+2. the ones of `--username` and `--password`. With only one of the two, the other is the remembered user name, or is asked for;
+3. the remembered ones, when the password is remembered (§6.6) and no other user name than the remembered one was given;
+4. what the user answers on the terminal: `User name: ` (not when one is remembered or given), then `Password: `, without echo.
+
+When something has to be asked and there is no terminal (`/dev/tty` cannot be opened), it is an error that names `--auth-file`, `--username` and `--password`. A profile that asks for no password ignores these options.
+
+**The DNS servers** of the application are the ones of `--dns` (IP addresses separated by commas or spaces, at most 4, as in §6.3); an empty `--dns ""` is the ones that the VPN pushes, also for a profile that has DNS servers of its own. Without `--dns` they are the profile's, else the ones of the VPN. A mistake in `--dns` ends Tube before anything is added, asked or connected. Tube asks for them on the terminal, `DNS servers (empty: the ones of the VPN): `, when there is no `--dns`, the profile has none of its own, and either the profile was added by this run or the user name or the password is asked for anyway: so a profile is asked about once, and a run that needs no answer asks none. An answer that is not valid is explained and asked for again. Without a terminal the question is left out, and the DNS servers are the ones of the VPN.
+
+**Saving.** After a question, and when there is something to save, Tube asks `Save the user name, the password and the DNS servers with the profile? [Y/n] ` (the question names what there is: the login, the DNS servers, or both); an empty line is yes. `--save` is that yes without the question, also for a run that asks nothing. What is saved is what this run uses and was given: the user name and the password from whichever of 1, 2 and 4 they came (§6.6: when the server accepted them), and the DNS servers of `--dns` or of the answer (at once; an empty `--dns ""` with `--save` takes the profile's own away). Without a save the profile stays as it is, and the DNS servers of `--dns` or of the answer are the ones of this run only. A run that asked nothing and has no `--save` saves nothing.
+
+The questions are written to the terminal and read from it, not standard input and output, which belong to the application. A password is never echoed, and the value of `--password` is in no error and no log; it is in the list of processes of the machine while Tube runs (§14, §17).
 
 ## 12. The application layer (`internal/app`)
 
@@ -327,7 +368,7 @@ tube [options]                                      only keep the profiles (the 
 
 ### 12.2 Commands and changes
 
-The commands block and take a context; the TUI calls each inside a command of its own (a `tea.Cmd`), so its screen never waits. They are: add a profile (path, name, without scripts or not), rename, set the user name, set the DNS servers, begin and end an edit of a profile's text (the App gives the path of a copy for the editor, then reads it back), delete, forget the remembered password, and connect (profile, credentials or none, and what to remember of them: §6.6). Cancelling the context of a connect cancels it.
+The commands block and take a context; the TUI calls each inside a command of its own (a `tea.Cmd`), so its screen never waits. They are: add a profile (path, name, DNS servers, without scripts or not), rename, set the user name, set the DNS servers, begin and end an edit of a profile's text (the App gives the path of a copy for the editor, then reads it back), delete, forget the remembered password, and connect (profile, credentials or none, and what to remember of them: §6.6). Cancelling the context of a connect cancels it. For `cmd/tube` there are two more: find the profile that `--profile` names, or add it from the file that it names (§11.1), and set the DNS servers of this run in place of the profile's (§11.2).
 
 `App.Subscribe` registers a function that is called after every change: of the profiles, of the session's state, of the application's output. The calls are joined so that a program that prints fast causes at most about twenty a second.
 
@@ -372,7 +413,7 @@ The profile that was used last is selected when the page opens.
 
 ### 13.3 Add
 
-From the top: **the list of a folder** (D23), the field **File** (the path of the `.ovpn` file; `~` is the home folder), the field **Name**, the error of the last add, and the buttons `[ Add ]`, `[ Cancel ]` and the mark `[ ] all files`. The question of §6.2 about scripts appears here. `Esc` goes back.
+From the top: **the list of a folder** (D23), the field **File** (the path of the `.ovpn` file; `~` is the home folder), the field **Name**, the field **DNS** (the DNS servers of the profile, as in §6.3; D29), the error of the last add, and the buttons `[ Add ]`, `[ Cancel ]` and the mark `[ ] all files`. The question of §6.2 about scripts appears here. `Esc` goes back.
 
 **The list of a folder.** A box with the path of the folder on its upper edge, and in it: `../` (the folder above; not in `/`), then the folders, then the files, each sorted by name without case. Only the files whose name ends in `.ovpn` (any case) are listed, and no name that begins with a dot; with `all files` on, every name is. A link to a folder is a folder. A name that is not safe to draw (§6.5) is never listed. The list opens on the folder of the last add, which `state.json` keeps between two runs (§5), and on the home folder when there was none yet, or when that folder cannot be read any more (D24); without a home folder, on the working folder of Tube. At most 10,000 names of a folder are read and 2,000 are listed; the lower edge then says so, and it says which rows are shown when not all fit. A folder that cannot be read says so; an empty one too. A terminal that is too short for a list of two rows shows the page without the list (and without `all files`).
 
@@ -387,7 +428,7 @@ From the top: **the list of a folder** (D23), the field **File** (the path of th
 | `Tab` | go to the File field (`Shift-Tab`: to `all files`) |
 | text | goes to the File field, which gets the focus; `/` and `~` start a new path there |
 
-**The fields.** The list follows the File field: it shows the folder of the path that is typed or pasted there, with the first name selected that begins like the last part of the path; and a folder that is opened in the list is written in the field. `Tab` in the File field completes the name of a file or folder as far as the names of its folder allow. `↑` and `↓` go from one part of the page to the next (list, File, Name, `all files`), `Tab` too outside the File field, and `Shift-Tab` back. A click in a field gives it the focus and puts the cursor there. The Name field shows, dim, the name that the profile gets when none is typed. `Space` on `all files`, or a click, changes the mark. `Enter` in a field or on `all files`, or a click on `[ Add ]`, adds; a click on `[ Cancel ]` is `Esc`. An error stays on the page, under the fields, until the next key or click. While an add runs, the page takes no key and no click.
+**The fields.** The list follows the File field: it shows the folder of the path that is typed or pasted there, with the first name selected that begins like the last part of the path; and a folder that is opened in the list is written in the field. `Tab` in the File field completes the name of a file or folder as far as the names of its folder allow. `↑` and `↓` go from one part of the page to the next (list, File, Name, DNS, `all files`), `Tab` too outside the File field, and `Shift-Tab` back. A click in a field gives it the focus and puts the cursor there. The Name field shows, dim, the name that the profile gets when none is typed, and the DNS field "empty: from the VPN". DNS servers that are not valid are an error of the add, and nothing is added; they are kept for the question about scripts. `Space` on `all files`, or a click, changes the mark. `Enter` in a field or on `all files`, or a click on `[ Add ]`, adds; a click on `[ Cancel ]` is `Esc`. An error stays on the page, under the fields, until the next key or click. While an add runs, the page takes no key and no click.
 
 ### 13.4 The profile's page
 
@@ -452,7 +493,7 @@ The TUI asks the terminal for the clicks and the wheel of the mouse (D22). Every
 
 ### 13.13 The menu of a field
 
-A click of the right button in a text field (the user name and the password of the login page, the File and the Name of the add page, the field that is open on a profile's page) gives the field the focus and reads the clipboard (D25). When the clipboard has text, a menu with the one entry `Paste` opens under the click (above it when there is no room under). A click on `Paste`, or `Enter`, pastes the text into the field at its cursor, as a paste of the terminal does: made safe for one line, as far as the field's limit allows. `Esc`, a click beside the menu, or another click of the right button closes it; another key closes it and is then the key that it is. While the menu is open nothing else of the page can be clicked, and the wheel does nothing. A clipboard without text opens no menu: the message line says "The clipboard has no text."
+A click of the right button in a text field (the user name and the password of the login page, the File, the Name and the DNS of the add page, the field that is open on a profile's page) gives the field the focus and reads the clipboard (D25). When the clipboard has text, a menu with the one entry `Paste` opens under the click (above it when there is no room under). A click on `Paste`, or `Enter`, pastes the text into the field at its cursor, as a paste of the terminal does: made safe for one line, as far as the field's limit allows. `Esc`, a click beside the menu, or another click of the right button closes it; another key closes it and is then the key that it is. While the menu is open nothing else of the page can be clicked, and the wheel does nothing. A clipboard without text opens no menu: the message line says "The clipboard has no text."
 
 How the clipboard is read:
 
@@ -472,7 +513,7 @@ What Tube promises, and where it is kept:
 | The names go to the VPN's DNS | §8.4 | a test resolves a name inside and sees the query on the TUN, to the configured server; with no server, the lookup fails |
 | The application cannot change the namespace's network | it runs in a nested user namespace with no capability over it (§8.5) | a test tries (`RTM_NEWROUTE`) from inside and is refused |
 | No root | nothing needs it; archtest rule 5 keeps `sudo` and helpers out | |
-| Keys and passwords stay private | modes 0700 and 0600 (§5); the password in memory, and in a file of mode 0600 only when the user has it remembered (§6.6); never in a log, an error, a snapshot or on the screen | tests of the modes; tests that a known secret appears in no log line and no error |
+| Keys and passwords stay private | modes 0700 and 0600 (§5); the password in memory, and in a file of mode 0600 only when the user has it remembered (§6.6); never in a log, an error, a snapshot or on the screen. The value of `--password` is the exception that the user chooses: the list of processes shows it (§17) | tests of the modes; tests that a known secret appears in no log line and no error |
 | Firefox runs inside the VPN also when the user's Firefox is open | a profile of its own (§8.7) | a test of the arguments that a program called `firefox` gets through the real path; that Firefox then is a process of its own was seen by hand (Firefox 160) |
 | Hostile text cannot reach the terminal | `sanitize.Display` (§6.5); search domains checked (§7) | tests with escape sequences in names, remotes and pushed options |
 | A profile runs nothing | only `ovpn` parses it; script options are refused or disabled (§6.2) | a test adds a profile with `up` and sees that nothing ran |
@@ -515,6 +556,7 @@ A step that says so makes a proof with `scripts/tui-proof.sh`: the real program,
 - IPv6 works only when the VPN gives an IPv6 address; else the application has IPv4 only.
 - What gopenvpn-conn does not support is not supported: compression, proxies, static keys, encrypted private keys, challenge/response logins (its README lists them). The parser's error names the option.
 - In the TUI the application's terminal is a dumb one that shows plain lines: a program that draws the whole screen (`vim`, `htop`, `less`) or needs every key (`ssh` to a shell with completion) is run with `--profile`, which gives it the real terminal. With `--profile` there are no tabs, and the profile cannot be switched while the application runs.
+- A password that is given with `--password` is an argument of Tube: while Tube runs, the other users of the machine can read it in the list of processes (`ps`), and the shell may keep it in its history. `--auth-file`, the question on the terminal and the remembered password have neither problem.
 - While the TUI is open, the mouse belongs to it: the terminal selects text only while `Shift` is held (§13.12).
 - Flatpak and Snap applications are not tested.
 

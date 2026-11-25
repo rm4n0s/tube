@@ -66,9 +66,9 @@ type inTerminal struct {
 	screen *screenReader
 }
 
-// startInTerminal builds the program, starts a server with its profile "test", and runs the
-// program with the arguments in a pseudo-terminal of 100x30.
-func startInTerminal(t *testing.T, args ...string) (*inTerminal, *vpntest.Server) {
+// buildTube builds the program for a test against the server, which is skipped where there is
+// no server.
+func buildTube(t *testing.T) string {
 	t.Helper()
 	if _, err := exec.LookPath("openvpn"); err != nil {
 		t.Skip("openvpn is not installed")
@@ -80,7 +80,21 @@ func startInTerminal(t *testing.T, args ...string) (*inTerminal, *vpntest.Server
 	if out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
 		t.Fatalf("go build: %v\n%s", err, out)
 	}
-	e, server := setup(t, bin, vpntest.ServerOptions{})
+	return bin
+}
+
+// startInTerminal builds the program, starts a server with its profile "test", and runs the
+// program with the arguments in a pseudo-terminal of 100x30.
+func startInTerminal(t *testing.T, args ...string) (*inTerminal, *vpntest.Server) {
+	t.Helper()
+	e, server := setup(t, buildTube(t), vpntest.ServerOptions{})
+	return e.inTerminal(t, args...), server
+}
+
+// inTerminal runs the program with the arguments in a pseudo-terminal of 100x30, which is its
+// terminal: what it asks, it asks there.
+func (e e2e) inTerminal(t *testing.T, args ...string) *inTerminal {
+	t.Helper()
 	master, slave, err := pty.Open()
 	if err != nil {
 		t.Fatal(err)
@@ -103,7 +117,7 @@ func startInTerminal(t *testing.T, args ...string) (*inTerminal, *vpntest.Server
 	if err := slave.Close(); err != nil {
 		t.Fatal(err)
 	}
-	return &inTerminal{cmd: cmd, master: master, screen: readScreen(master)}, server
+	return &inTerminal{cmd: cmd, master: master, screen: readScreen(master)}
 }
 
 // press writes keys to the program's terminal.

@@ -77,7 +77,13 @@ func TestRun(t *testing.T) {
 		{"no arguments, no terminal", nil, false, 125, "", "tube: the TUI needs a terminal; use --profile <name> (TubeNotATerminal)\n"},
 		{"no --profile, no terminal", []string{"true"}, false, 125, "", "tube: the TUI needs a terminal; use --profile <name> (TubeNotATerminal)\n"},
 		{"a profile that is not there", []string{"--profile", "nothing", "true"}, true, 125, "",
-			"tube: There is no profile called \"nothing\". (AppProfileNotFound)\n"},
+			"tube: There is no profile called \"nothing\", and no .ovpn file at that path. (AppNoProfileOrFile)\n"},
+		{"--dns without --profile", []string{"--dns", "9.9.9.9", "true"}, false, 2, "",
+			"tube: --dns goes with --profile (TubeOptionWithoutProfile)\ntube: Try 'tube --help'.\n"},
+		{"--auth-file with --password", []string{"-p", "work", "--auth-file", "f", "--password", "hunter2", "true"}, false, 2, "",
+			"tube: --auth-file has the user name and the password: leave --username and --password out (TubeAuthFileWithCredentials)\ntube: Try 'tube --help'.\n"},
+		{"a mistake in --dns adds nothing", []string{"--profile", "nothing", "--dns", "dns.example", "true"}, true, 125, "",
+			"tube: \"dns.example\" is not an IP address. (ProfileDNSInvalid)\n"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

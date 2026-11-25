@@ -18,10 +18,10 @@
   │                                                                                              │  
   │                                                                                              │  
   │                                                                                              │  
-  │                                                                                              │  
   ╰──────────────────────────────────────────────────────────────────────────────────────────────╯  
   File  ~/bad.ovpn                                                                                  
   Name  bad                                                                                         
+  DNS   empty: from the VPN                                                                         
   The profile uses the option "comp-lzo" on line 3, which Tube does not support: compression is     
   not supported. (UnsupportedOption)                                                                
   [ Add ]  [ Cancel ]    [ ] all files                                                              

@@ -5,10 +5,10 @@
   │ > Documents/                                         │  
   │   Downloads/                                         │  
   │                                                      │  
-  │                                                      │  
   ╰──────────────────────────────────────────────────────╯  
   File                                                      
   Name  the file's name                                     
+  DNS   empty: from the VPN                                 
                                                             
   [ Add ]  [ Cancel ]    [ ] all files                      
 ────────────────────────────────────────────────────────────

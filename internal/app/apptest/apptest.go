@@ -161,8 +161,8 @@ func (f *Fake) Subscribe(fn func()) (cancel func()) {
 }
 
 // AddProfile records the call; the id of the new profile is "id-new".
-func (f *Fake) AddProfile(ctx context.Context, path, name string, withoutScripts bool) (string, error) {
-	if err := f.call(ctx, "AddProfile", path, name, withoutScripts); err != nil {
+func (f *Fake) AddProfile(ctx context.Context, path, name, dns string, withoutScripts bool) (string, error) {
+	if err := f.call(ctx, "AddProfile", path, name, dns, withoutScripts); err != nil {
 		return "", err
 	}
 	return "id-new", nil

@@ -70,7 +70,7 @@ func TestFail(t *testing.T) {
 	if err := f.Connect(context.Background(), "id-work", nil, app.Remember{}); err != refused {
 		t.Errorf("Connect = %v", err)
 	}
-	if _, err := f.AddProfile(context.Background(), "/p.ovpn", "", false); err != nil {
+	if _, err := f.AddProfile(context.Background(), "/p.ovpn", "", "", false); err != nil {
 		t.Errorf("AddProfile = %v", err)
 	}
 }

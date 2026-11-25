@@ -64,11 +64,11 @@ func readAtMost(path string, max int64) ([]byte, error) {
 	return data, err
 }
 
-// openTerminal opens the user's terminal (/dev/tty), to ask for a password.
+// openTerminal opens the user's terminal (/dev/tty), to ask for what a run is missing.
 func openTerminal(path string) (*os.File, error) {
 	tty, err := os.OpenFile(path, os.O_RDWR, 0)
 	if err != nil {
-		return nil, errors.NewErr(TagNoTerminal, err).SetMessage("the profile needs a password and there is no terminal to ask on; use --auth-file")
+		return nil, errors.NewErr(TagNoTerminal, err).SetMessage("the profile needs a user name and a password and there is no terminal to ask on; use --auth-file, or --username and --password")
 	}
 	return tty, nil
 }
@@ -77,10 +77,7 @@ func openTerminal(path string) (*os.File, error) {
 // password, which is not echoed.
 func askCredentials(tty *os.File, username string) (app.Credentials, error) {
 	if username == "" {
-		if err := prompt(tty, "User name: "); err != nil {
-			return app.Credentials{}, err
-		}
-		line, err := readLine(tty)
+		line, err := askLine(tty, userPrompt)
 		if err != nil {
 			return app.Credentials{}, err
 		}

@@ -31,14 +31,14 @@ func TestTheFolderOfTheLastAddIsRemembered(t *testing.T) {
 	}
 	first, second := t.TempDir(), t.TempDir()
 	pki := profilestest.NewPKI(t)
-	if _, err := a.AddProfile(ctx, profilestest.WriteProfile(t, first, "one.ovpn", pki, profilestest.Options{}), "", false); err != nil {
+	if _, err := a.AddProfile(ctx, profilestest.WriteProfile(t, first, "one.ovpn", pki, profilestest.Options{}), "", "", false); err != nil {
 		t.Fatal(err)
 	}
 	if got := addFolder(t, a); got != first {
 		t.Errorf("after an add the folder is %q, want %q", got, first)
 	}
 	// An add that fails changes nothing.
-	if _, err := a.AddProfile(ctx, filepath.Join(second, "missing.ovpn"), "", false); err == nil {
+	if _, err := a.AddProfile(ctx, filepath.Join(second, "missing.ovpn"), "", "", false); err == nil {
 		t.Fatal("a missing file was added")
 	}
 	if got := addFolder(t, a); got != first {
@@ -63,7 +63,7 @@ func TestTheFolderOfTheLastAddIsRemembered(t *testing.T) {
 	// A path under "~" is remembered as the folder that it is.
 	home := os.Getenv("HOME")
 	profilestest.WriteProfile(t, home, "two.ovpn", pki, profilestest.Options{})
-	if _, err := a.AddProfile(ctx, "~/two.ovpn", "", false); err != nil {
+	if _, err := a.AddProfile(ctx, "~/two.ovpn", "", "", false); err != nil {
 		t.Fatal(err)
 	}
 	if got := addFolder(t, a); got != home {
@@ -136,7 +136,7 @@ func TestAStateFileThatCannotBeWritten(t *testing.T) {
 	}
 	dir := t.TempDir()
 	path := profilestest.WriteProfile(t, dir, "one.ovpn", profilestest.NewPKI(t), profilestest.Options{})
-	if _, err := a.AddProfile(context.Background(), path, "", false); err != nil {
+	if _, err := a.AddProfile(context.Background(), path, "", "", false); err != nil {
 		t.Fatalf("the add failed with the state: %v", err)
 	}
 	// This run remembers it all the same, and the log says what happened.

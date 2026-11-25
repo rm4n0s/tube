@@ -48,24 +48,53 @@ func (a *App) Subscribe(f func()) (cancel func()) {
 	}
 }
 
-// AddProfile adds the profile file at path under the name; an empty name is the file's name
-// without ".ovpn". A path that starts with "~/" is in the home folder. It returns the new
-// profile's id.
-func (a *App) AddProfile(ctx context.Context, path, name string, withoutScripts bool) (string, error) {
+// expandHome is the path with a leading "~/" made the home folder.
+func (a *App) expandHome(path string) string {
 	if rest, ok := strings.CutPrefix(path, "~/"); ok {
 		if home, ok := a.opts.Env("HOME"); ok && home != "" {
-			path = filepath.Join(home, rest)
+			return filepath.Join(home, rest)
 		}
 	}
+	return path
+}
+
+// profileNameOf is the name that a profile file gives its profile: the file's name without
+// ".ovpn".
+func profileNameOf(path string) string {
+	name := filepath.Base(path)
+	if strings.HasSuffix(strings.ToLower(name), profileExt) {
+		name = name[:len(name)-len(profileExt)]
+	}
+	return name
+}
+
+// AddProfile adds the profile file at path under the name; an empty name is the file's name
+// without ".ovpn". A path that starts with "~/" is in the home folder. dns are the DNS servers
+// of the profile, as text (IP addresses separated by spaces or commas); empty means the ones
+// that the VPN pushes. They are checked before anything is added, so a mistake in them adds
+// nothing. It returns the new profile's id.
+func (a *App) AddProfile(ctx context.Context, path, name, dns string, withoutScripts bool) (string, error) {
+	servers, err := profiles.ParseDNS(dns)
+	if err != nil {
+		return "", err
+	}
+	path = a.expandHome(path)
 	if name == "" {
-		name = filepath.Base(path)
-		if strings.HasSuffix(strings.ToLower(name), profileExt) {
-			name = name[:len(name)-len(profileExt)]
-		}
+		name = profileNameOf(path)
 	}
 	p, err := a.store.Add(ctx, path, name, profiles.AddOptions{WithoutScripts: withoutScripts})
 	if err != nil {
 		return "", err
+	}
+	if len(servers) > 0 {
+		if err := a.store.SetDNS(ctx, p.ID, servers); err != nil {
+			// A profile without the DNS servers that were asked for is not what was asked
+			// for: it is taken back.
+			if derr := a.store.Delete(ctx, p.ID); derr != nil {
+				a.log.Warn("a profile that was added without its DNS servers cannot be removed", "err", derr, "profile", p.ID)
+			}
+			return "", err
+		}
 	}
 	a.log.Info("profile added", "profile", p.ID, "name", p.Name)
 	a.rememberAddFolder(ctx, path)

@@ -70,16 +70,18 @@ func (b *tb) stop() {
 
 func main() {
 	dir := flag.String("dir", "", "the folder for the keys, the configuration and test.ovpn")
+	username := flag.String("username", "", "with --password: the user name that the server asks for")
+	password := flag.String("password", "", "the password that the server asks for; without it, it asks for no login")
 	flag.Parse()
 	if *dir == "" || flag.NArg() != 0 {
-		fmt.Fprintln(os.Stderr, "usage: server --dir <folder>")
+		fmt.Fprintln(os.Stderr, "usage: server --dir <folder> [--username <name> --password <password>]")
 		os.Exit(2)
 	}
 	b := &tb{dir: *dir}
 	// SIGTERM is asked for before the server starts, so that it is never lost.
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGTERM, syscall.SIGINT)
-	server := vpntest.StartServer(b, vpntest.ServerOptions{})
+	server := vpntest.StartServer(b, vpntest.ServerOptions{Username: *username, Password: *password})
 	// The profile and the files next to it, into the folder of --dir.
 	src := filepath.Dir(server.ProfilePath())
 	entries, err := os.ReadDir(src)

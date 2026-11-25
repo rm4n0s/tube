@@ -21,7 +21,11 @@ terminal UI stays open while Firefox runs. It has three tabs:
 Before the VPN is connected, and after it has ended, the application has no network at all.
 
 `tube --profile work curl https://example.com` does the same without the terminal UI. It is for
-scripts and for programs that need the whole terminal.
+scripts and for programs that need the whole terminal. `--profile` also takes an `.ovpn` file,
+which is added the first time: `tube --profile ~/Downloads/work.ovpn curl https://example.com`.
+What that run is missing (the user name, the password, DNS servers) is asked on the terminal,
+and saved when you say so; `--username`, `--password`, `--auth-file`, `--dns` and `--save` give
+it without a question (`docs/GUIDE.md`).
 
 ```
  Tube   ping through test   connected 00:00:00   ↓ 0 B/s  ↑ 0 B/s

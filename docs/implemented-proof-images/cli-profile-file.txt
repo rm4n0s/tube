@@ -1,0 +1,18 @@
+tube: added the profile "test"
+User name: ada
+Password:
+DNS servers (empty: the ones of the VPN): dns.example
+"dns.example" is not an IP address. (ProfileDNSInvalid)
+DNS servers (empty: the ones of the VPN): 10.8.0.1
+Save the user name, the password and the DNS servers with the profile? [Y/n]
+tube: connected to test; running sh
+PING 10.8.0.1 (10.8.0.1) 56(84) bytes of data.
+64 bytes from 10.8.0.1: icmp_seq=1 ttl=64 time=0.308 ms
+64 bytes from 10.8.0.1: icmp_seq=2 ttl=64 time=0.601 ms
+
+--- 10.8.0.1 ping statistics ---
+2 packets transmitted, 2 received, 0% packet loss, time 1023ms
+rtt min/avg/max/mdev = 0.308/0.454/0.601/0.146 ms
+
+
+

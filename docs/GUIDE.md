@@ -61,7 +61,14 @@ last, also after you started Tube again. Walk to the file:
 You can also type or paste the path: text that you type goes to the File field (`~` is your home
 folder, and `tab` completes the name of a file or a folder there), and the list follows what you
 type. In the Name field, type a name if you want another one than the file's name, which the
-field shows. `↑`, `↓` and `tab` go from one part of the page to the next.
+field shows. In the **DNS** field you can give the profile DNS servers of its own, up to 4 IP
+addresses separated by spaces or commas (see "DNS servers of a profile"); leave it empty to use
+the ones that the VPN sends, as most profiles do. `↑`, `↓` and `tab` go from one part of the
+page to the next.
+
+There is a way without the terminal UI too: `tube --profile ~/Downloads/work.ovpn firefox` adds
+the file and runs the application at once (see "Using Tube in scripts, and for programs that
+need the whole terminal").
 
 The list shows only folders and files whose name ends in `.ovpn`, and no hidden ones. To see
 every file (a profile that is called `client.conf`, a hidden folder), turn on `[ ] all files`
@@ -212,9 +219,15 @@ own resolver is not visible to it. Some VPN servers send no DNS server. Tube the
 the VPN gave no DNS server: names will not be found; set DNS servers for the profile
 ```
 
-On the profile's page, press `n` and type up to 4 IP addresses, separated by spaces or commas
-(for example `10.0.0.53, 1.1.1.1`). These are then used in place of the VPN's. An empty field
-means "the ones that the VPN sends".
+Give the profile DNS servers of its own: up to 4 IP addresses, separated by spaces or commas
+(for example `10.0.0.53, 1.1.1.1`). These are then used in place of the VPN's, and they are
+reached through the tunnel like everything else. An empty field means "the ones that the VPN
+sends". There are three places for it:
+
+- the **DNS** field of the add page, when you add the profile;
+- the profile's page afterwards: press `n`;
+- `--dns` on the command line, with `--profile`: for that run only, or with `--save` for the
+  profile (see "Using Tube in scripts, and for programs that need the whole terminal").
 
 ## A password
 
@@ -247,14 +260,16 @@ after the label: with the label, the server refuses the login. The same holds fo
 `--auth-file`: the user name alone on the first line, the password alone on the second.
 
 With `--profile`, Tube asks on the terminal: the user name when none is remembered, then the
-password, without echo. For scripts, give a file with the user name on the first line and the
-password on the second:
+password, without echo, and then whether to save them (see the next section). For scripts, give
+a file with the user name on the first line and the password on the second:
 
 ```
 tube --profile work --auth-file ~/.config/work-vpn.auth curl https://example.com
 ```
 
-The file must be readable by you only (`chmod 600`); Tube refuses it otherwise.
+The file must be readable by you only (`chmod 600`); Tube refuses it otherwise. `--username`
+and `--password` give them as options; read what the next section says about `--password`
+first.
 
 ## Using Tube in scripts, and for programs that need the whole terminal
 
@@ -269,6 +284,65 @@ tube -p work htop
 The name is the profile's exact name, or the only one that has it when the case is ignored.
 While the application runs, Tube writes its own lines on standard error, each starting with
 `tube: `. `--quiet` (`-q`) leaves them out.
+
+**A profile file in place of a name.** `--profile` also takes the path of an `.ovpn` file, and
+you may leave the `.ovpn` out:
+
+```
+tube -p ~/Downloads/work.ovpn curl https://example.com
+tube -p ~/Downloads/work curl https://example.com
+```
+
+The first time, Tube adds the file as the profile `work` (it says `tube: added the profile
+"work"`) and runs the application. Every time after, the same command uses that profile; so
+does `tube -p work ...`, from any folder. Tube looks for a profile with that name first, and
+for a file only when there is none. A file that runs scripts is added without them after you
+answered `y` on the terminal.
+
+**What is missing is asked for.** When the profile needs a user name and a password and has
+none remembered, and when a profile that was just added has no DNS servers, Tube asks on the
+terminal, one question after the other, and then whether to keep the answers:
+
+```
+$ tube -p ~/Downloads/work.ovpn curl https://example.com
+tube: added the profile "work"
+User name: ada
+Password:
+DNS servers (empty: the ones of the VPN): 10.0.0.53
+Save the user name, the password and the DNS servers with the profile? [Y/n]
+```
+
+`enter` alone answers the DNS question with "the ones of the VPN", and the last question with
+yes. After a yes the next run asks nothing. After a no the profile stays as it was: the answers
+were for this run. The DNS servers are asked for only together with another question or for a
+profile that was just added, so a profile that needs no answer runs without one.
+
+**Without questions.** Give the same as options, for a script or for one command line:
+
+| Option | What it gives |
+|---|---|
+| `--username <name>` | the user name |
+| `--password <password>` | the password |
+| `--auth-file <path>` | both, from a file that only you can read (see "A password") |
+| `--dns <addresses>` | the DNS servers of the application for this run, in place of the profile's: `--dns 10.0.0.53,1.1.1.1`. `--dns ""` is the ones that the VPN sends |
+| `--save` | keep the user name, the password and the DNS servers of this run with the profile, without the question |
+
+```
+tube -p ~/Downloads/work.ovpn --username ada --password 'the password' --dns 10.0.0.53 --save true
+tube -p work curl https://example.com
+```
+
+The first line adds the profile and saves everything (`true` is a program that does nothing);
+the second, and every run after it, needs no option and asks nothing. Without `--save`, options
+change nothing of the profile. A user name and a password are saved only when the server
+accepted them. Where there is no terminal (a `cron` job, a service), Tube cannot ask: it ends
+with an error that names these options when a user name or a password is missing, and it uses
+the DNS servers of the VPN without asking.
+
+**`--password` can be seen by others.** An option is part of the command line, and the other
+users of your machine can read the command lines of running programs (`ps`); your shell may
+also write it to its history. On a machine that you share, use `--auth-file`, or let Tube ask
+once and save the answer.
 
 The exit status is the application's. Besides that:
 
@@ -326,9 +400,10 @@ the log (see "The log") has the whole error. The sentences, and what to do:
 **Profiles**
 
 - "This profile needs a user name and a password." Give them on the login page, or with
-  `--auth-file`.
+  `--auth-file`, or with `--username` and `--password`.
 - "This profile runs scripts (<options>). Tube never runs them." and "This profile runs scripts.
-  Tube never runs them." Add it in the terminal UI and answer `y` to add it without them.
+  Tube never runs them." Add it in the terminal UI, or with `--profile <file>` on a terminal,
+  and answer `y` to add it without them.
 - "Another profile is already called "<name>"." Choose another name; names are compared without
   case.
 - "A profile needs a name." Type a name.
@@ -339,6 +414,9 @@ the log (see "The log") has the whole error. The sentences, and what to do:
 - "A profile can have 4 DNS servers at most." Remove some.
 - "There is no profile called "<name>"." Check the name of `--profile`; `tube` without
   arguments shows the list.
+- "There is no profile called "<name>", and no .ovpn file at that path." What `--profile` got is
+  neither the name of a profile nor the path of a file, with or without `.ovpn`. Check the
+  spelling, and the folder that you are in when the path is not a whole one.
 - "More than one profile is called "<name>" when the case is ignored. Write the name exactly."
   Write the name with the same capitals as in the list.
 

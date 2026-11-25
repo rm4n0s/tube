@@ -271,7 +271,7 @@ func TestTheMenuOfTheOtherFields(t *testing.T) {
 		}
 		h.key("enter")
 		h.key("enter")
-		if got := f.Calls(); !slices.Equal(got, []string{"AddProfile(~/Downloads/vpn/lab.ovpn, Lab, false)"}) {
+		if got := f.Calls(); !slices.Equal(got, []string{"AddProfile(~/Downloads/vpn/lab.ovpn, Lab, , false)"}) {
 			t.Errorf("Calls = %q", got)
 		}
 	})

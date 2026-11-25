@@ -35,17 +35,29 @@ type e2e struct {
 // "test" to the folders that the program will use.
 func setup(t *testing.T, bin string, opts vpntest.ServerOptions) (e2e, *vpntest.Server) {
 	t.Helper()
-	server := vpntest.StartServer(t, opts)
-	dirs := storagetest.Isolate(t)
-	store := profiles.NewStore(dirs.Config, clock.System())
-	if _, err := store.Add(context.Background(), server.ProfilePath(), "test", profiles.AddOptions{}); err != nil {
+	e, server := setupWithoutProfile(t, bin, opts)
+	if _, err := e.store().Add(context.Background(), server.ProfilePath(), "test", profiles.AddOptions{}); err != nil {
 		t.Fatal(err)
 	}
+	return e, server
+}
+
+// setupWithoutProfile makes isolated folders with no profile in them, and starts a server with
+// the options; its profile file is server.ProfilePath(), "test.ovpn" of a folder of the test.
+func setupWithoutProfile(t *testing.T, bin string, opts vpntest.ServerOptions) (e2e, *vpntest.Server) {
+	t.Helper()
+	server := vpntest.StartServer(t, opts)
+	dirs := storagetest.Isolate(t)
 	env := []string{
 		"PATH=" + os.Getenv("PATH"), "HOME=" + os.Getenv("HOME"),
 		"TUBE_CONFIG_DIR=" + dirs.Config, "TUBE_STATE_DIR=" + dirs.State, "XDG_RUNTIME_DIR=" + os.Getenv("XDG_RUNTIME_DIR"),
 	}
 	return e2e{bin: bin, env: env}, server
+}
+
+// store is the store of the profiles that the program uses.
+func (e e2e) store() *profiles.Store {
+	return profiles.NewStore(e.dir("TUBE_CONFIG_DIR"), clock.System())
 }
 
 // dir is the folder that a variable of the program's environment names.
@@ -58,7 +70,8 @@ func (e e2e) dir(name string) string {
 	return ""
 }
 
-// command is the program with the arguments, under a context of 60 seconds.
+// command is the program with the arguments, under a context of 60 seconds. It runs in a
+// session of its own, so it has no terminal to ask on, whoever runs the tests.
 func (e e2e) command(t *testing.T, args ...string) *exec.Cmd {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -66,6 +79,7 @@ func (e e2e) command(t *testing.T, args ...string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, e.bin, args...)
 	cmd.Env = e.env
 	cmd.WaitDelay = 10 * time.Second
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	return cmd
 }
 

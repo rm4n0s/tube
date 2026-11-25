@@ -91,7 +91,7 @@ func TestCommands(t *testing.T) {
 	if err := os.Rename(profileFile(t, "w.ovpn", profilestest.Options{}), upper); err != nil {
 		t.Fatal(err)
 	}
-	id, err := a.AddProfile(ctx, upper, "", false)
+	id, err := a.AddProfile(ctx, upper, "", "", false)
 	check(t, err, "", 1)
 	if p, err := a.store.Get(ctx, id); err != nil || p.Name != "Work" {
 		t.Errorf("the default name is %q, %v", p.Name, err)
@@ -100,12 +100,12 @@ func TestCommands(t *testing.T) {
 	if err := os.Rename(profileFile(t, "x.ovpn", profilestest.Options{}), filepath.Join(home, "x.ovpn")); err != nil {
 		t.Fatal(err)
 	}
-	id2, err := a.AddProfile(ctx, "~/x.ovpn", "", false)
+	id2, err := a.AddProfile(ctx, "~/x.ovpn", "", "", false)
 	check(t, err, "", 1)
 	if p, err := a.store.Get(ctx, id2); err != nil || p.Name != "x" {
 		t.Errorf("the profile of the home folder is %q, %v", p.Name, err)
 	}
-	_, err = a.AddProfile(ctx, filepath.Join(dirs.Config, "missing.ovpn"), "", false)
+	_, err = a.AddProfile(ctx, filepath.Join(dirs.Config, "missing.ovpn"), "", "", false)
 	check(t, err, "Store.Add", 0)
 	check(t, a.RenameProfile(ctx, id, "Office"), "", 1)
 	check(t, a.RenameProfile(ctx, id2, "office"), "ProfileNameTaken", 0)
@@ -123,12 +123,12 @@ func TestCommands(t *testing.T) {
 func TestAddWithScripts(t *testing.T) {
 	a, _ := open(t)
 	path := profileFile(t, "s.ovpn", profilestest.Options{Extra: []string{"script-security 2", "up /bin/up.sh", "down /bin/down.sh"}})
-	_, err := a.AddProfile(context.Background(), path, "s", false)
+	_, err := a.AddProfile(context.Background(), path, "s", "", false)
 	options, ok := IsRunsScripts(err)
 	if !ok || options != "up, down" {
 		t.Fatalf("IsRunsScripts = %q, %v (err %v)", options, ok, err)
 	}
-	if _, err := a.AddProfile(context.Background(), path, "s", true); err != nil {
+	if _, err := a.AddProfile(context.Background(), path, "s", "", true); err != nil {
 		t.Errorf("with the scripts disabled: %v", err)
 	}
 	if _, ok := IsRunsScripts(nil); ok {

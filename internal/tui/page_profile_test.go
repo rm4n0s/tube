@@ -301,7 +301,7 @@ func TestEditReal(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			a, _ := realApp(t)
-			id, err := a.AddProfile(context.Background(), fixtureProfile(t, t.TempDir(), "Lab.ovpn"), "", false)
+			id, err := a.AddProfile(context.Background(), fixtureProfile(t, t.TempDir(), "Lab.ovpn"), "", "", false)
 			if err != nil {
 				t.Fatal(err)
 			}

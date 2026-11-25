@@ -93,6 +93,13 @@ func TestGoldenAdd(t *testing.T) {
 		h.keys("a", "shift+tab", "space")
 		h.golden("add-all-files")
 	})
+	t.Run("the DNS servers", func(t *testing.T) {
+		h := newHarness(t, sampleIn(sampleCwd), 100, 30)
+		h.key("a")
+		h.keys("end", "enter", "down")
+		h.typeText("9.9.9.9, 149.112.112.112")
+		h.golden("add-dns")
+	})
 	t.Run("completed", func(t *testing.T) {
 		h := newHarness(t, apptest.Sample(), 100, 30)
 		m := h.m()
@@ -131,7 +138,7 @@ func TestAddFlow(t *testing.T) {
 	h.key("a")
 	h.typeText("/tmp/x.ovpn")
 	h.key("enter")
-	if got := f.Calls(); !slices.Equal(got, []string{"AddProfile(/tmp/x.ovpn, , false)"}) {
+	if got := f.Calls(); !slices.Equal(got, []string{"AddProfile(/tmp/x.ovpn, , , false)"}) {
 		t.Errorf("Calls = %q", got)
 	}
 	if h.m().page != pageProfiles {
@@ -146,10 +153,113 @@ func TestAddFlow(t *testing.T) {
 		h.keys("down")
 		h.typeText("Office")
 		h.key("enter")
-		if got := f.Calls(); !slices.Equal(got, []string{"AddProfile(/tmp/y.ovpn, Office, false)"}) {
+		if got := f.Calls(); !slices.Equal(got, []string{"AddProfile(/tmp/y.ovpn, Office, , false)"}) {
 			t.Errorf("Calls = %q", got)
 		}
 		h.has("Added Office.")
+	})
+}
+
+func TestAddWithDNS(t *testing.T) {
+	t.Run("typed", func(t *testing.T) {
+		f := apptest.Sample()
+		h := newHarness(t, f, 100, 30)
+		h.key("a")
+		h.typeText("/tmp/x.ovpn")
+		h.keys("down", "down")
+		if h.m().add.focus != addFocusDNS {
+			t.Fatalf("the focus is %d", h.m().add.focus)
+		}
+		h.typeText("9.9.9.9, 1.1.1.1")
+		h.key("enter")
+		if got := f.Calls(); !slices.Equal(got, []string{"AddProfile(/tmp/x.ovpn, , 9.9.9.9, 1.1.1.1, false)"}) {
+			t.Errorf("Calls = %q", got)
+		}
+		h.has("Added x.")
+	})
+	t.Run("pasted, without the list", func(t *testing.T) {
+		f := apptest.Sample()
+		h := newHarness(t, f, 40, 10)
+		h.key("a")
+		h.typeText("/tmp/x.ovpn")
+		h.keys("down", "down")
+		h.paste("10.8.0.1")
+		h.has("10.8.0.1")
+		h.key("enter")
+		if got := f.Calls(); !slices.Equal(got, []string{"AddProfile(/tmp/x.ovpn, , 10.8.0.1, false)"}) {
+			t.Errorf("Calls = %q", got)
+		}
+	})
+	t.Run("a click and the menu", func(t *testing.T) {
+		f := sampleIn(sampleCwd)
+		h := newHarness(t, f, 100, 30)
+		h.key("a")
+		h.clickOn("Home.ovpn")
+		x, y := h.find(dnsPlaceholder)
+		h.click(x, y)
+		if h.m().add.focus != addFocusDNS {
+			t.Fatalf("a click gave the focus to %d", h.m().add.focus)
+		}
+		h.withClipboard("9.9.9.9")
+		h.rightClick(x, y)
+		h.clickOn("Paste")
+		if got := h.m().add.dns.value(); got != "9.9.9.9" {
+			t.Fatalf("the DNS field has %q", got)
+		}
+		h.key("enter")
+		if !called(f, "AddProfile(~/Downloads/Home.ovpn, , 9.9.9.9, false)") {
+			t.Errorf("Calls = %q", f.Calls())
+		}
+	})
+	t.Run("it is kept for the question about scripts", func(t *testing.T) {
+		f := apptest.Sample()
+		f.Fail = map[string]error{"AddProfile": errors.New("ProfileRunsScripts", "the profile runs scripts", "options", "up")}
+		h := newHarness(t, f, 100, 30)
+		h.key("a")
+		h.typeText("/tmp/s.ovpn")
+		h.keys("down", "down")
+		h.typeText("9.9.9.9")
+		h.key("enter")
+		h.key("y")
+		if calls := f.Calls(); len(calls) != 2 || calls[1] != "AddProfile(/tmp/s.ovpn, , 9.9.9.9, true)" {
+			t.Errorf("Calls = %q", calls)
+		}
+	})
+	t.Run("real: the profile gets them", func(t *testing.T) {
+		a, _ := realApp(t)
+		path := fixtureProfile(t, t.TempDir(), "Lab.ovpn")
+		h := newHarness(t, a, 100, 30)
+		h.key("a")
+		h.typeText(path)
+		h.keys("down", "down")
+		h.typeText("9.9.9.9 2620:fe::fe")
+		h.key("enter")
+		h.has("Added Lab.")
+		snap, err := a.Snapshot(context.Background())
+		if err != nil || len(snap.Profiles) != 1 {
+			t.Fatalf("the snapshot is %+v, %v", snap, err)
+		}
+		if got := snap.Profiles[0].DNS; !slices.Equal(got, []string{"9.9.9.9", "2620:fe::fe"}) {
+			t.Errorf("DNS = %q", got)
+		}
+	})
+	t.Run("real: a mistake adds nothing", func(t *testing.T) {
+		a, _ := realApp(t)
+		path := fixtureProfile(t, t.TempDir(), "Lab.ovpn")
+		h := newHarness(t, a, 100, 30)
+		h.key("a")
+		h.typeText(path)
+		h.keys("down", "down")
+		h.typeText("dns.example")
+		h.key("enter")
+		h.has(`"dns.example" is not an IP address.`)
+		if h.m().page != pageAdd || h.m().add.dns.value() != "dns.example" {
+			t.Error("the add page did not stay with what was typed")
+		}
+		snap, err := a.Snapshot(context.Background())
+		if err != nil || len(snap.Profiles) != 0 {
+			t.Fatalf("the snapshot is %+v, %v", snap, err)
+		}
 	})
 }
 
@@ -166,7 +276,7 @@ func TestAddWithScriptsFlow(t *testing.T) {
 			h.has("This profile runs scripts (up, down).")
 			h.key(answer)
 			calls := f.Calls()
-			if answer == "y" && (len(calls) != 2 || calls[1] != "AddProfile(/tmp/s.ovpn, , true)") {
+			if answer == "y" && (len(calls) != 2 || calls[1] != "AddProfile(/tmp/s.ovpn, , , true)") {
 				t.Errorf("Calls = %q", calls)
 			}
 			if answer == "n" && len(calls) != 1 {

@@ -6,6 +6,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"slices"
@@ -28,6 +29,7 @@ import (
 // The Tags of the App's own errors.
 const (
 	TagProfileNotFound  = "AppProfileNotFound"
+	TagNoProfileOrFile  = "AppNoProfileOrFile"
 	TagProfileAmbiguous = "AppProfileAmbiguous"
 	TagProfileBroken    = "AppProfileBroken"
 	TagNotConnected     = "AppNotConnected"
@@ -39,6 +41,9 @@ const logFile = "tube.log"
 
 // maxNameInError is the length of a name in an error.
 const maxNameInError = 64
+
+// maxPathInError is the length of a path in an error: its end is what tells the files apart.
+const maxPathInError = 512
 
 // Credentials are the user name and the password that the user gave.
 type Credentials struct{ Username, Password string }
@@ -105,6 +110,10 @@ type App struct {
 	session *session.Session
 	running bool
 	pending syscall.Signal
+	// runDNS are the DNS servers of this run only, in place of the profile's, when runDNSSet
+	// (UseDNS); none of them are the ones of the VPN.
+	runDNS    []netip.Addr
+	runDNSSet bool
 	// rd is what Start made and what the run changes.
 	rd runData
 	// tempDir is the folder of edits, made on first use; edits are the files that BeginEdit
@@ -180,13 +189,17 @@ func (a *App) Close() error {
 // Target is the application that will run: its name and arguments, or none.
 func (a *App) Target() []string { return slices.Clone(a.opts.Argv) }
 
-// Found is a profile that FindProfile found: its id, whether it asks for a user name and a
-// password, whether the password is remembered, and the remembered user name.
+// Found is a profile that FindProfile found: its id and name, whether it asks for a user name
+// and a password, whether the password is remembered, the remembered user name, and whether it
+// has DNS servers of its own. Added says that FindOrAddProfile added it just now, from a file.
 type Found struct {
 	ID            string
+	Name          string
 	NeedsPassword bool
 	HasPassword   bool
 	Username      string
+	HasDNS        bool
+	Added         bool
 }
 
 // FindProfile finds a usable profile by its name, as --profile does (docs/SPEC.md §11): the one
@@ -216,7 +229,79 @@ func (a *App) FindProfile(ctx context.Context, name string) (Found, error) {
 	case found.Broken != "":
 		return Found{}, errors.New(TagProfileBroken, "the profile cannot be used", "name", safe, "reason", found.Broken)
 	}
-	return Found{ID: found.ID, NeedsPassword: found.NeedsPassword, HasPassword: found.HasPassword, Username: found.Username}, nil
+	return Found{
+		ID: found.ID, Name: found.Name, NeedsPassword: found.NeedsPassword, HasPassword: found.HasPassword,
+		Username: found.Username, HasDNS: len(found.DNS) > 0,
+	}, nil
+}
+
+// isNoProfile says whether the error is FindProfile's "there is no profile with this name".
+func isNoProfile(err error) bool {
+	appErr, ok := errors.FromError(err)
+	return ok && appErr.Tag == TagProfileNotFound
+}
+
+// FindOrAddProfile finds the profile that --profile names (docs/SPEC.md §11), or adds it from
+// a file:
+//
+//  1. a stored profile with that name (FindProfile), also when the name is written with
+//     ".ovpn";
+//  2. else a profile file at that path, as it is written or with ".ovpn" added ("~/" is the
+//     home folder): the stored profile with the name of that file when there is one, and else
+//     the file is added under that name, and Added is set.
+//
+// withoutScripts adds a file that runs scripts with those lines disabled; without it, such a
+// file is the error of IsRunsScripts.
+func (a *App) FindOrAddProfile(ctx context.Context, value string, withoutScripts bool) (Found, error) {
+	found, err := a.FindProfile(ctx, value)
+	if err == nil || !isNoProfile(err) {
+		return found, err
+	}
+	if strings.HasSuffix(strings.ToLower(value), profileExt) && !strings.ContainsRune(value, filepath.Separator) {
+		found, err := a.FindProfile(ctx, profileNameOf(value))
+		if err == nil || !isNoProfile(err) {
+			return found, err
+		}
+	}
+	candidates := []string{value}
+	if !strings.HasSuffix(strings.ToLower(value), profileExt) {
+		candidates = append(candidates, value+profileExt)
+	}
+	for _, candidate := range candidates {
+		path := a.expandHome(candidate)
+		if info, err := os.Stat(path); err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		found, err := a.FindProfile(ctx, profileNameOf(path))
+		if err == nil || !isNoProfile(err) {
+			return found, err
+		}
+		id, err := a.AddProfile(ctx, path, "", "", withoutScripts)
+		if err != nil {
+			return Found{}, err
+		}
+		p, err := a.store.Get(ctx, id)
+		if err != nil {
+			return Found{}, err
+		}
+		return Found{ID: p.ID, Name: p.Name, NeedsPassword: p.NeedsPassword, Username: p.Username, Added: true}, nil
+	}
+	return Found{}, errors.New(TagNoProfileOrFile, "there is no profile with this name and no profile file at this path", "name", sanitize.Display(value, maxPathInError))
+}
+
+// UseDNS sets the DNS servers of the application for this run only, in place of the ones of
+// the profile, which stays as it is: text is IP addresses separated by spaces or commas, and
+// empty text is the servers that the VPN pushes. It is called before the application is
+// started.
+func (a *App) UseDNS(text string) error {
+	servers, err := profiles.ParseDNS(text)
+	if err != nil {
+		return err
+	}
+	a.mu.Lock()
+	a.runDNS, a.runDNSSet = servers, true
+	a.mu.Unlock()
+	return nil
 }
 
 // Connect connects the profile. With remember, the user name of the credentials is saved as the
@@ -334,6 +419,9 @@ func (a *App) takeTunnel(ctx context.Context) (taken, error) {
 	a.mu.Lock()
 	tk := taken{tun: a.tunnel, p: a.profile, creds: a.creds}
 	a.tunnel = nil
+	if a.runDNSSet {
+		tk.p.DNS = a.runDNS
+	}
 	a.mu.Unlock()
 	if tk.tun == nil {
 		return taken{}, errors.New(TagNotConnected, "no VPN is connected")

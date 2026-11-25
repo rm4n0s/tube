@@ -42,6 +42,12 @@ profile's private key beside it, and who can read your files can read both. Turn
 password" off on the login page, or forget it on the profile's page, to have none on disk. Tests check the modes, and check that a known secret
 appears in no log line and no error.
 
+**One way of giving a password is not private: `--password`.** An option is part of Tube's
+command line, and while Tube runs, the other users of the machine can read it in the list of
+processes (`ps`); a shell may also keep it in its history. Tube itself puts it in no log and no
+error. On a machine that others use, give the password in a file of mode 0600 (`--auth-file`),
+or let Tube ask on the terminal and save it: neither is on a command line.
+
 **Hostile text cannot reach your terminal.** Everything that comes from a profile or a VPN server
 (names, servers, pushed options, messages) is made safe before it is stored, logged or drawn:
 control characters and escape sequences are replaced. What the application prints is read from a
