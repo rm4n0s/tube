@@ -199,6 +199,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.readSnapshot()
 	case fieldDoneMsg:
 		return m.fieldDone(msg)
+	case forgotMsg:
+		return m.forgot(msg)
 	case editBeganMsg:
 		return m.editBegan(msg)
 	case editorDoneMsg:

@@ -7,9 +7,9 @@
   Password                                                                                          
                                                                                                     
   [x] remember the user name                                                                        
+  [x] remember the password                                                                         
                                                                                                     
   [ Connect ]  [ Cancel ]                                                                           
-                                                                                                    
                                                                                                     
                                                                                                     
                                                                                                     

@@ -1,0 +1,30 @@
+ Tube   select a profile to run true
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  Name             Work
+  Servers          vpn.example.com:443 udp
+  Login            a user name and a password
+  User name        not remembered
+  Password         remembered
+  DNS servers      from the VPN
+  Last used        never
+  Files            inside the profile
+  Ignored options  dev, nobind
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+r rename   u user   p forget password   n DNS   t edit   d delete   enter run   esc back

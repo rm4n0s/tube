@@ -52,6 +52,35 @@ type profilePage struct {
 // fieldDoneMsg is the end of the command of a field: its error, or nil.
 type fieldDoneMsg struct{ err error }
 
+// forgotMsg is the end of forgetting a password: its error, or nil.
+type forgotMsg struct{ err error }
+
+// forgotPassword is the notice after a password was forgotten.
+const forgotPassword = "The password is forgotten: Tube asks for it the next time."
+
+// askForget is p on the page of a profile whose password is remembered: a question, then the
+// password is forgotten.
+func (m Model) askForget(p app.Profile) Model {
+	a, ctx := m.app, m.ctx
+	m.ask = &asking{
+		q: question{text: "Forget the password of \"" + p.Name + "\"? Tube will ask for it the next time.", yes: "Forget"},
+		onYes: func(m Model) (Model, tea.Cmd) {
+			return m, func() tea.Msg { return forgotMsg{err: a.ForgetPassword(ctx, p.ID)} }
+		},
+	}
+	return m
+}
+
+// forgot shows how forgetting the password ended, and reads the snapshot again.
+func (m Model) forgot(msg forgotMsg) (Model, tea.Cmd) {
+	if msg.err != nil {
+		m.setError(msg.err)
+	} else {
+		m.setNotice(forgotPassword)
+	}
+	return m, m.readSnapshot()
+}
+
 // openProfile opens the page of the profile with the id.
 func (m Model) openProfile(id string) Model {
 	m.page = pageProfile
@@ -103,6 +132,10 @@ func (m Model) profileKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		return m, nil
 	}
 	switch name {
+	case "p":
+		if p.HasPassword {
+			return m.askForget(p), nil
+		}
 	case "r":
 		pp.open, pp.field = renameField, field{limit: maxNameLen}
 		pp.field.set(p.Name)
@@ -217,6 +250,13 @@ func (m Model) profileBody() []line {
 	}
 	add("Login", loginStyle, login)
 	add("User name", plain, username)
+	if p.NeedsPassword {
+		password, passwordStyle := "asked each time", plain
+		if p.HasPassword {
+			password, passwordStyle = "remembered", st.ok
+		}
+		add("Password", passwordStyle, password)
+	}
 	dns := "from the VPN"
 	if len(p.DNS) > 0 {
 		dns = strings.Join(p.DNS, ", ")

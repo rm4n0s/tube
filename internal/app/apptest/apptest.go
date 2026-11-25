@@ -183,6 +183,11 @@ func (f *Fake) SetDNS(ctx context.Context, id, text string) error {
 	return f.call(ctx, "SetDNS", id, text)
 }
 
+// ForgetPassword records the call.
+func (f *Fake) ForgetPassword(ctx context.Context, id string) error {
+	return f.call(ctx, "ForgetPassword", id)
+}
+
 // DeleteProfile records the call.
 func (f *Fake) DeleteProfile(ctx context.Context, id string) error {
 	return f.call(ctx, "DeleteProfile", id)
@@ -205,7 +210,7 @@ func (f *Fake) EndEdit(ctx context.Context, id, path string) (bool, error) {
 }
 
 // Connect records the call, with the password as "***".
-func (f *Fake) Connect(ctx context.Context, id string, creds *app.Credentials, remember bool) error {
+func (f *Fake) Connect(ctx context.Context, id string, creds *app.Credentials, remember app.Remember) error {
 	if creds == nil {
 		return f.call(ctx, "Connect", id, "nil", remember)
 	}
@@ -279,7 +284,7 @@ func (f *Fake) Disconnect() {
 }
 
 // Switch records the call, with the password as "***".
-func (f *Fake) Switch(ctx context.Context, id string, creds *app.Credentials, remember bool) error {
+func (f *Fake) Switch(ctx context.Context, id string, creds *app.Credentials, remember app.Remember) error {
 	if creds == nil {
 		return f.call(ctx, "Switch", id, "nil", remember)
 	}

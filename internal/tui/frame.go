@@ -123,6 +123,10 @@ func (m Model) footer() line {
 		if p == pageProfile && ok && prof.Broken != "" && b.keys != "d" && b.keys != "esc" {
 			continue
 		}
+		if p == pageProfile && b.keys == "p" && (!ok || !prof.HasPassword) {
+			// There is a password to forget only when one is remembered.
+			continue
+		}
 		if p == pageAdd && b.keys == "space" && m.add.focus != addFocusAll {
 			// Space is a character in a field: it is a key only on the mark of "all files".
 			continue

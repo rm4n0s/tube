@@ -138,7 +138,7 @@ func TestConnectFlow(t *testing.T) {
 	h := newHarness(t, f, 100, 30)
 	h.selectProfile("id-home")
 	h.key("enter")
-	if got := f.Calls(); !slices.Equal(got, []string{"Connect(id-home, nil, false)", "Start()"}) {
+	if got := f.Calls(); !slices.Equal(got, []string{"Connect(id-home, nil, keep nothing)", "Start()"}) {
 		t.Errorf("Calls = %q", got)
 	}
 	if h.quit || h.m().page != pageRun || !h.m().Result().Started {
@@ -149,7 +149,7 @@ func TestConnectFlow(t *testing.T) {
 		h := newHarness(t, f, 100, 30)
 		h.open("id-home")
 		h.key("enter")
-		if got := f.Calls(); !slices.Equal(got, []string{"Connect(id-home, nil, false)", "Start()"}) {
+		if got := f.Calls(); !slices.Equal(got, []string{"Connect(id-home, nil, keep nothing)", "Start()"}) {
 			t.Errorf("Calls = %q", got)
 		}
 	})
@@ -161,8 +161,12 @@ func TestLoginFlow(t *testing.T) {
 		keys []string
 		want string
 	}{
-		{"remember", nil, "Connect(id-work, ada, ***, true)"},
-		{"do not remember", []string{"tab", "space", "shift+tab"}, "Connect(id-work, ada, ***, false)"},
+		// The focus is on the password; tab goes to the mark of the user name, then to the one
+		// of the password.
+		{"remember both", nil, "Connect(id-work, ada, ***, keep the password)"},
+		{"not the user name: it is kept with the password", []string{"tab", "space", "shift+tab"}, "Connect(id-work, ada, ***, keep the password)"},
+		{"not the password", []string{"tab", "tab", "space", "tab", "tab"}, "Connect(id-work, ada, ***, keep the user name, forget the password)"},
+		{"nothing", []string{"tab", "space", "tab", "space", "tab", "tab"}, "Connect(id-work, ada, ***, forget the password)"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

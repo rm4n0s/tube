@@ -30,7 +30,7 @@ Expected: the window of Tube shows the VPN's address, the normal one the machine
 
 ## Step 5.5 (b): a Firefox that already runs
 
-With a normal Firefox already open:
+With your normal Firefox already open (changed on 2026-11-25: Firefox gets a profile of Tube's own, SPEC D28):
 
 ```sh
 ./tube firefox
@@ -38,7 +38,7 @@ With a normal Firefox already open:
 
 Select a profile and press Enter.
 
-Expected: no new window opens inside the Firefox that already runs (whose traffic would not go through the VPN): Firefox refuses, or says that it is already running. (Tube's help page says that a program that hands its work to one that already runs is not in the VPN.)
+Expected: a second Firefox opens, with none of your bookmarks or logins (it is Tube's own profile), and the Status tab has the line `firefox runs on a profile of its own, which Tube keeps: ...`. A "what is my IP" page (https://ifconfig.me) shows the VPN's address in that window, and the machine's own address in your normal Firefox beside it. `q`, `y` in Tube closes Tube's Firefox only. The second time, Tube's Firefox still has what you did in it the first time.
 
 ## Step 5.5 (c): adding a real provider's file
 
@@ -154,3 +154,13 @@ go build -o tube ./cmd/tube
 ```
 
 Expected: `a` opens the add page on your home folder the first time; after you added a profile from another folder, `a` opens on that folder, also after you started Tube again. On the login page of a profile with a password: copy the user name where your provider shows it (only what is after `Username:`), click the right button in the User name field: a menu with `Paste` opens under the mouse; a click on `Paste` puts the text in the field. The same for the password, which is drawn as stars, as many as it has characters, and never as its characters. With nothing copied (or a picture), the right click opens no menu, and the message line says `The clipboard has no text.` Then `enter`: Tube connects, and the first line shows the rates (`↓`, `↑`) also when the name of the profile is long.
+
+## The remembered password (a change outside the steps, 2026-11-25)
+
+With a real provider's profile that asks for a password:
+
+```sh
+./tube firefox
+```
+
+Expected: the login page has `[x] remember the password`; after a login that worked, quit, and start again: `enter` on the profile connects at once, without the login page. The profile's page (`e`) says `Password  remembered`; `p`, `y` forgets it, and the next `enter` shows the login page again. `./tube --profile <name> curl -s https://ifconfig.me` prints the VPN's address without asking for anything while the password is remembered.

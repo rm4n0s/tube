@@ -12,12 +12,13 @@ const (
 	userLabel       = "User name"
 	passwordLabel   = "Password"
 	rememberText    = "remember the user name"
+	keepText        = "remember the password"
 	needBoth        = "Give the user name and the password."
 	connectButton   = "[ Connect ]"
 	useButton       = "[ Use ]"
 	loginLabelWidth = 11
 	maxPasswordLen  = 1024
-	loginFieldCount = 3
+	loginFieldCount = 4
 )
 
 // The lines of the login page that take the focus.
@@ -25,6 +26,7 @@ const (
 	focusUser = iota
 	focusPassword
 	focusRemember
+	focusKeep
 )
 
 // loginPage is the state of the login page.
@@ -32,7 +34,9 @@ type loginPage struct {
 	id, name   string
 	user, pass field
 	remember   bool
-	focus      int
+	// keep says that the password is remembered too, in a file that only the user can read.
+	keep  bool
+	focus int
 	// back is the page that esc goes back to.
 	back page
 	// forSwitch says that enter switches the running application to the profile, in place of
@@ -41,14 +45,16 @@ type loginPage struct {
 }
 
 // startConnect is enter on a profile, with an application to run: the login page for a profile
-// with a password, the connecting page for another, the reason for a broken one.
+// with a password that is not remembered, the connecting page for another, the reason for a
+// broken one.
 func (m Model) startConnect(p app.Profile) (Model, tea.Cmd) {
 	if p.Broken != "" {
 		m.message, m.isError = "This profile cannot be used: "+p.Broken, true
 		return m, nil
 	}
-	if !p.NeedsPassword {
-		return m.connect(p.ID, p.Name, nil, false, nil)
+	if !p.NeedsPassword || p.HasPassword {
+		// Without credentials the app uses the remembered ones.
+		return m.connect(p.ID, p.Name, nil, app.Remember{}, nil)
 	}
 	return m.openLogin(p), nil
 }
@@ -56,7 +62,7 @@ func (m Model) startConnect(p app.Profile) (Model, tea.Cmd) {
 // openLogin opens the login page for the profile; esc goes back to the page that is open.
 func (m Model) openLogin(p app.Profile) Model {
 	l := &loginPage{
-		id: p.ID, name: p.Name, remember: true, back: m.page,
+		id: p.ID, name: p.Name, remember: true, keep: true, back: m.page,
 		user: field{limit: maxUsernameLen},
 		pass: field{limit: maxPasswordLen, secret: true},
 	}
@@ -86,10 +92,11 @@ func (m Model) loginKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 			return m, nil
 		}
 		creds := &app.Credentials{Username: l.user.value(), Password: l.pass.value()}
+		remember := app.Remember{User: l.remember, Password: l.keep, Forget: !l.keep}
 		if l.forSwitch {
-			return m.switchTo(l.id, l.name, creds, l.remember, &l)
+			return m.switchTo(l.id, l.name, creds, remember, &l)
 		}
-		return m.connect(l.id, l.name, creds, l.remember, &l)
+		return m.connect(l.id, l.name, creds, remember, &l)
 	default:
 		switch l.focus {
 		case focusUser:
@@ -99,6 +106,10 @@ func (m Model) loginKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		case focusRemember:
 			if msg.String() == "space" {
 				l.remember = !l.remember
+			}
+		case focusKeep:
+			if msg.String() == "space" {
+				l.keep = !l.keep
 			}
 		}
 	}
@@ -133,6 +144,8 @@ func (m Model) clickLogin(focus, width int) action {
 			l.pass.click(c.x, width)
 		case focusRemember:
 			l.remember = !l.remember
+		case focusKeep:
+			l.keep = !l.keep
 		}
 		return m, nil
 	}
@@ -148,8 +161,9 @@ func focusLogin(focus int) action {
 	}
 }
 
-// loginBody is the login page: the two fields, the mark of "remember", and the buttons. The
-// empty lines between them are left out on a terminal that is too short for them.
+// loginBody is the login page: the two fields, the marks of what is remembered, and the buttons.
+// On a terminal that is too short for it, the empty lines between them are left out, and then
+// the first line.
 func (m Model) loginBody() []line {
 	l := m.login
 	st := m.styles
@@ -160,29 +174,34 @@ func (m Model) loginBody() []line {
 		}
 		return "  " + st.label.Render(fit(name, loginLabelWidth))
 	}
-	box := "[ ]"
-	if l.remember {
-		box = "[x]"
-	}
-	remember := box + " " + rememberText
-	if l.focus == focusRemember {
-		remember = st.selected.Render(remember)
+	mark := func(on bool, what string, focus int) line {
+		box := "[ ] "
+		if on {
+			box = "[x] "
+		}
+		shown := box + what
+		if l.focus == focus {
+			shown = st.selected.Render(shown)
+		}
+		return text("  ").button(shown, m.clickLogin(focus, 0))
 	}
 	connect := connectButton
 	if l.forSwitch {
 		connect = useButton
 	}
 	gap := line{}
+	intro := text("  " + fit("The profile "+st.accent.Render(l.name)+" asks for a user name and a password.", max(m.width-4, 10)))
 	lines := []line{
 		gap,
-		text("  " + fit("The profile "+st.accent.Render(l.name)+" asks for a user name and a password.", max(m.width-4, 10))),
+		intro,
 		gap,
 		text(label(userLabel, focusUser)).
 			append(text(l.user.view(width, l.focus == focusUser, st)).field(m.clickLogin(focusUser, width), focusLogin(focusUser))),
 		text(label(passwordLabel, focusPassword)).
 			append(text(l.pass.view(width, l.focus == focusPassword, st)).field(m.clickLogin(focusPassword, width), focusLogin(focusPassword))),
 		gap,
-		text("  ").button(remember, m.clickLogin(focusRemember, 0)),
+		mark(l.remember, rememberText, focusRemember),
+		mark(l.keep, keepText, focusKeep),
 		gap,
 		text("  ").button(st.buttonMain.Render(connect), pressKey("enter")).add("  ").button(st.button.Render(cancelButton), pressKey("esc")),
 	}
@@ -194,6 +213,10 @@ func (m Model) loginBody() []line {
 		if ln.w > 0 {
 			tight = append(tight, ln)
 		}
+	}
+	if len(tight) > m.pageHeight() {
+		// Without the first line the fields, the marks and the buttons fit in five lines.
+		tight = tight[1:]
 	}
 	return tight
 }

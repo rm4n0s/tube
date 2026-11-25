@@ -82,8 +82,8 @@ release for linux/amd64 and linux/arm64.
 ## Limits
 
 - A program that hands its work to a process outside the namespace is not in the VPN. For
-  example, a second `firefox` asks the Firefox that is already open to open a window.
-  `docs/GUIDE.md` says what to do.
+  Firefox and Thunderbird would do so when one is already open; for them Tube uses a profile of
+  its own, so `tube firefox` is in the VPN also then. `docs/GUIDE.md` says more.
 - Services on the machine's own `127.0.0.1` cannot be reached from the application.
 - Programs that need to gain rights (`sudo`, a setuid program) do not gain them inside.
 - IPv6 works only when the VPN gives an IPv6 address.

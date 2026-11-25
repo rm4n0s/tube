@@ -77,7 +77,7 @@ func TestSwitchFlow(t *testing.T) {
 	h := networkHarness(t, f, 100, 30)
 	h.selectProfile("id-home")
 	h.key("enter")
-	if got := calls(f); !slices.Equal(got, []string{"Switch(id-home, nil, false)"}) {
+	if got := calls(f); !slices.Equal(got, []string{"Switch(id-home, nil, keep nothing)"}) {
 		t.Errorf("Calls = %q", got)
 	}
 	h.has("Now using Home.")
@@ -97,7 +97,7 @@ func TestSwitchWithALogin(t *testing.T) {
 		t.Error("the password is drawn")
 	}
 	h.key("enter")
-	if got := calls(f); !slices.Equal(got, []string{"Switch(id-work, ada, ***, true)"}) {
+	if got := calls(f); !slices.Equal(got, []string{"Switch(id-work, ada, ***, keep the password)"}) {
 		t.Errorf("Calls = %q", got)
 	}
 	if h.m().page != pageRun || h.m().run.tab != tabNetwork {
@@ -197,7 +197,7 @@ func TestConnectAgainAfterADisconnect(t *testing.T) {
 		t.Fatalf("the selection is on %s", h.selectedID())
 	}
 	h.key("enter")
-	if got := calls(f); !slices.Equal(got, []string{"Switch(id-home, nil, false)"}) {
+	if got := calls(f); !slices.Equal(got, []string{"Switch(id-home, nil, keep nothing)"}) {
 		t.Errorf("Calls = %q", got)
 	}
 }

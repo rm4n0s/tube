@@ -124,7 +124,7 @@ func TestTabs(t *testing.T) {
 func TestTheStartFlow(t *testing.T) {
 	f := apptest.Sample()
 	h := runHarness(t, f, 100, 30)
-	if got := f.Calls(); !slices.Equal(got, []string{"Connect(id-home, nil, false)", "Start()"}) {
+	if got := f.Calls(); !slices.Equal(got, []string{"Connect(id-home, nil, keep nothing)", "Start()"}) {
 		t.Errorf("Calls = %q", got)
 	}
 	h.has("[Status]")

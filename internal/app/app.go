@@ -43,6 +43,35 @@ const maxNameInError = 64
 // Credentials are the user name and the password that the user gave.
 type Credentials struct{ Username, Password string }
 
+// Remember says what a connect keeps of the credentials that were given, when it worked
+// (docs/SPEC.md §6.6). The zero value changes nothing: a script that gives the credentials
+// with --auth-file does not change the profile.
+type Remember struct {
+	// User keeps the user name.
+	User bool
+	// Password keeps the password, in a file that only the user can read, and the user name
+	// with it: the profile then connects without asking.
+	Password bool
+	// Forget forgets a password that was remembered before, when Password is not set: the
+	// user was asked and did not want it kept.
+	Forget bool
+}
+
+// String says what is kept, for the tests' records of calls.
+func (r Remember) String() string {
+	switch {
+	case r.Password:
+		return "keep the password"
+	case r.User && r.Forget:
+		return "keep the user name, forget the password"
+	case r.User:
+		return "keep the user name"
+	case r.Forget:
+		return "forget the password"
+	}
+	return "keep nothing"
+}
+
 // Options say how the application is opened.
 type Options struct {
 	// Env looks up the environment; nil is os.LookupEnv.
@@ -151,12 +180,21 @@ func (a *App) Close() error {
 // Target is the application that will run: its name and arguments, or none.
 func (a *App) Target() []string { return slices.Clone(a.opts.Argv) }
 
+// Found is a profile that FindProfile found: its id, whether it asks for a user name and a
+// password, whether the password is remembered, and the remembered user name.
+type Found struct {
+	ID            string
+	NeedsPassword bool
+	HasPassword   bool
+	Username      string
+}
+
 // FindProfile finds a usable profile by its name, as --profile does (docs/SPEC.md §11): the one
 // with exactly that name, else the only one that has it when the case is ignored.
-func (a *App) FindProfile(ctx context.Context, name string) (id string, needsPassword bool, username string, err error) {
+func (a *App) FindProfile(ctx context.Context, name string) (Found, error) {
 	list, err := a.store.List(ctx)
 	if err != nil {
-		return "", false, "", err
+		return Found{}, err
 	}
 	found, count := profiles.Profile{}, 0
 	for _, p := range list {
@@ -172,19 +210,19 @@ func (a *App) FindProfile(ctx context.Context, name string) (id string, needsPas
 	safe := sanitize.Display(name, maxNameInError)
 	switch {
 	case count == 0:
-		return "", false, "", errors.New(TagProfileNotFound, "there is no profile with this name", "name", safe)
+		return Found{}, errors.New(TagProfileNotFound, "there is no profile with this name", "name", safe)
 	case count > 1:
-		return "", false, "", errors.New(TagProfileAmbiguous, "more than one profile has this name when the case is ignored", "name", safe, "count", count)
+		return Found{}, errors.New(TagProfileAmbiguous, "more than one profile has this name when the case is ignored", "name", safe, "count", count)
 	case found.Broken != "":
-		return "", false, "", errors.New(TagProfileBroken, "the profile cannot be used", "name", safe, "reason", found.Broken)
+		return Found{}, errors.New(TagProfileBroken, "the profile cannot be used", "name", safe, "reason", found.Broken)
 	}
-	return found.ID, found.NeedsPassword, found.Username, nil
+	return Found{ID: found.ID, NeedsPassword: found.NeedsPassword, HasPassword: found.HasPassword, Username: found.Username}, nil
 }
 
 // Connect connects the profile. With remember, the user name of the credentials is saved as the
 // profile's. After it returned nil, Run runs the application. A tunnel that was connected before
 // is closed first.
-func (a *App) Connect(ctx context.Context, id string, creds *Credentials, remember bool) error {
+func (a *App) Connect(ctx context.Context, id string, creds *Credentials, remember Remember) error {
 	a.closeTunnel()
 	err := a.connect(ctx, id, creds, remember)
 	if err != nil {
@@ -194,7 +232,7 @@ func (a *App) Connect(ctx context.Context, id string, creds *Credentials, rememb
 }
 
 // connect is Connect without the log of its failure.
-func (a *App) connect(ctx context.Context, id string, creds *Credentials, remember bool) error {
+func (a *App) connect(ctx context.Context, id string, creds *Credentials, remember Remember) error {
 	d, err := a.dial(ctx, id, creds, remember)
 	if err != nil {
 		return err
@@ -229,7 +267,7 @@ func (a *App) setTunnel(tun vpn.Tunnel, p profiles.Profile) {
 // status (docs/SPEC.md §12.4). The tunnel belongs to the session from then on; when the
 // application cannot be started, the tunnel is closed.
 func (a *App) Run(ctx context.Context) (int, error) {
-	tk, err := a.takeTunnel()
+	tk, err := a.takeTunnel(ctx)
 	if err != nil {
 		return sandbox.ExitCodeOf(err), err
 	}
@@ -244,7 +282,7 @@ func (a *App) Run(ctx context.Context) (int, error) {
 		a.mu.Unlock()
 	}()
 	s, err := session.Start(ctx, session.Options{
-		Tunnel: tun, Dirs: a.dirs, Path: path, Argv: a.opts.Argv, ProfileName: p.Name, DNS: p.DNS,
+		Tunnel: tun, Dirs: a.dirs, Path: path, Argv: tk.argv, Notes: notes(tk.note), ProfileName: p.Name, DNS: p.DNS,
 		Logger: a.log, Lines: a.opts.Lines, Clock: a.opts.Clock, Redial: a.redialer(p.ID, creds),
 	})
 	if err != nil {
@@ -276,11 +314,23 @@ type taken struct {
 	p     profiles.Profile
 	creds *vpn.Credentials
 	path  string
+	// argv is what the application is started with, and note a line for the user about it,
+	// or "" (applicationArgv).
+	argv []string
+	note string
+}
+
+// notes are the lines of a session about how the application is started.
+func notes(note string) []string {
+	if note == "" {
+		return nil
+	}
+	return []string{note}
 }
 
 // takeTunnel takes the connected tunnel for a run, and finds the application. When there is no
 // tunnel, no target, or no such application, it fails; a tunnel that it took is then closed.
-func (a *App) takeTunnel() (taken, error) {
+func (a *App) takeTunnel(ctx context.Context) (taken, error) {
 	a.mu.Lock()
 	tk := taken{tun: a.tunnel, p: a.profile, creds: a.creds}
 	a.tunnel = nil
@@ -298,6 +348,11 @@ func (a *App) takeTunnel() (taken, error) {
 		return taken{}, err
 	}
 	tk.path = path
+	tk.argv, tk.note, err = a.applicationArgv(ctx)
+	if err != nil {
+		a.closeTunnelOf(tk.tun)
+		return taken{}, err
+	}
 	return tk, nil
 }
 

@@ -51,13 +51,13 @@ func TestCalls(t *testing.T) {
 	if err := f.RenameProfile(ctx, "id-work", "Office"); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.Connect(ctx, "id-work", &app.Credentials{Username: "ada", Password: "hunter2"}, true); err != nil {
+	if err := f.Connect(ctx, "id-work", &app.Credentials{Username: "ada", Password: "hunter2"}, app.Remember{User: true}); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.Connect(ctx, "id-home", nil, false); err != nil {
+	if err := f.Connect(ctx, "id-home", nil, app.Remember{}); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"RenameProfile(id-work, Office)", "Connect(id-work, ada, ***, true)", "Connect(id-home, nil, false)"}
+	want := []string{"RenameProfile(id-work, Office)", "Connect(id-work, ada, ***, keep the user name)", "Connect(id-home, nil, keep nothing)"}
 	if got := f.Calls(); !slices.Equal(got, want) {
 		t.Errorf("Calls = %q, want %q", got, want)
 	}
@@ -67,7 +67,7 @@ func TestFail(t *testing.T) {
 	refused := &errors.Error{Tag: "AuthFailed"}
 	f := Sample()
 	f.Fail = map[string]error{"Connect": refused}
-	if err := f.Connect(context.Background(), "id-work", nil, false); err != refused {
+	if err := f.Connect(context.Background(), "id-work", nil, app.Remember{}); err != refused {
 		t.Errorf("Connect = %v", err)
 	}
 	if _, err := f.AddProfile(context.Background(), "/p.ovpn", "", false); err != nil {
@@ -97,7 +97,7 @@ func TestBlock(t *testing.T) {
 		f.Block = map[string]chan struct{}{"Connect": make(chan struct{})}
 		ctx, cancel := context.WithCancel(context.Background())
 		done := make(chan error, 1)
-		go func() { done <- f.Connect(ctx, "id-home", nil, false) }()
+		go func() { done <- f.Connect(ctx, "id-home", nil, app.Remember{}) }()
 		cancel()
 		if err := <-done; err != context.Canceled {
 			t.Errorf("Connect = %v", err)
@@ -147,14 +147,14 @@ func TestTheRunCalls(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.Disconnect()
-	if err := f.Switch(ctx, "id-work", &app.Credentials{Username: "ada", Password: "hunter2"}, true); err != nil {
+	if err := f.Switch(ctx, "id-work", &app.Credentials{Username: "ada", Password: "hunter2"}, app.Remember{User: true}); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.Switch(ctx, "id-home", nil, false); err != nil {
+	if err := f.Switch(ctx, "id-home", nil, app.Remember{}); err != nil {
 		t.Fatal(err)
 	}
 	f.Stop()
-	want := []string{"Start()", "Disconnect()", "Switch(id-work, ada, ***, true)", "Switch(id-home, nil, false)", "Stop()"}
+	want := []string{"Start()", "Disconnect()", "Switch(id-work, ada, ***, keep the user name)", "Switch(id-home, nil, keep nothing)", "Stop()"}
 	if got := f.Calls(); !slices.Equal(got, want) {
 		t.Errorf("Calls = %q", got)
 	}

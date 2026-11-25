@@ -270,6 +270,16 @@ func TestTheLines(t *testing.T) {
 			t.Errorf("the lines are %q", got)
 		}
 	})
+	t.Run("the notes come after the first line", func(t *testing.T) {
+		var lines bytes.Buffer
+		opts, r := options(t, pingTunnel(network), sh, []string{"sh", "-c", "exit 0"})
+		opts.Lines = &lines
+		opts.Notes = []string{"sh runs on a profile of its own", "and a second note"}
+		start(t, opts, r).wait(t)
+		if got, want := lines.String(), "tube: connected to work; running sh\ntube: sh runs on a profile of its own\ntube: and a second note\n"; got != want {
+			t.Errorf("the lines are %q, want %q", got, want)
+		}
+	})
 	t.Run("no DNS server", func(t *testing.T) {
 		var lines bytes.Buffer
 		n := network

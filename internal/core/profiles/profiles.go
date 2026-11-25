@@ -104,6 +104,9 @@ type Profile struct {
 	Remotes []Remote
 	// NeedsPassword says that the profile asks for a user name and a password.
 	NeedsPassword bool
+	// HasPassword says that a password is remembered for the profile (Store.Password). The
+	// password itself is never in a Profile.
+	HasPassword bool
 	// Ignored are the options that the parser accepted and that do nothing; safe to draw.
 	Ignored []string
 	// Files are the files next to the profile file, relative to FilesDir, sorted.
@@ -257,6 +260,7 @@ func (s *Store) build(id string, m meta) Profile {
 		p.Remotes = append(p.Remotes, Remote{Network: sanitize.Display(r.Network, 8), Address: sanitize.Display(r.Address, 255)})
 	}
 	p.NeedsPassword = parsed.NeedsCredentials
+	p.HasPassword = hasPassword(filepath.Join(s.dir, id))
 	for _, name := range parsed.Ignored {
 		p.Ignored = append(p.Ignored, sanitize.Display(name, 64))
 	}

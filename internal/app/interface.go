@@ -22,7 +22,8 @@ type Application interface {
 	DeleteProfile(ctx context.Context, id string) error
 	BeginEdit(ctx context.Context, id string) (string, error)
 	EndEdit(ctx context.Context, id, path string) (bool, error)
-	Connect(ctx context.Context, id string, creds *Credentials, remember bool) error
+	ForgetPassword(ctx context.Context, id string) error
+	Connect(ctx context.Context, id string, creds *Credentials, remember Remember) error
 	Start(ctx context.Context) error
 	RunState() RunState
 	OutputLen() (first, end int)
@@ -30,7 +31,7 @@ type Application interface {
 	Input(p []byte) error
 	ResizeOutput(cols, rows int)
 	Disconnect()
-	Switch(ctx context.Context, id string, creds *Credentials, remember bool) error
+	Switch(ctx context.Context, id string, creds *Credentials, remember Remember) error
 	Stop()
 }
 

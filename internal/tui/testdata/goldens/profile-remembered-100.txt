@@ -1,0 +1,30 @@
+ Tube   select a profile to run firefox                                                             
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+  Name             Work                                                                             
+  Servers          vpn1.example.com:1194 udp                                                        
+                   vpn2.example.com:443 tcp                                                         
+  Login            a user name and a password                                                       
+  User name        ada                                                                              
+  Password         remembered                                                                       
+  DNS servers      10.0.0.53                                                                        
+  Last used        3 days ago                                                                       
+  Files            ca.crt, client.crt, client.key                                                   
+  Ignored options  persist-key, persist-tun                                                         
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+r rename   u user   p forget password   n DNS   t edit   d delete   enter run   esc back            

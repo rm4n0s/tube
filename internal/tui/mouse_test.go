@@ -299,7 +299,7 @@ func TestTheLoginPageIsClicked(t *testing.T) {
 	}
 	h.key("end")
 	h.clickOn("[ Connect ]")
-	if !called(f, "Connect(id-work, ada, ***, false)") {
+	if !called(f, "Connect(id-work, ada, ***, keep the password)") {
 		t.Errorf("Calls = %q", f.Calls())
 	}
 	c := newHarness(t, apptest.Sample(), 100, 30)

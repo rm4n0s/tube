@@ -6,11 +6,11 @@
                    vpn2.example.com:443 tcp                 
   Login            a user name and a password               
   User name        ada                                      
+  Password         asked each time                          
   DNS servers      10.0.0.53                                
   Last used        3 days ago                               
   Files            ca.crt, client.crt, client.key           
   Ignored options  persist-key, persist-tun                 
-                                                            
 ────────────────────────────────────────────────────────────
                                                             
 r rename  u user  n DNS  t edit  d delete  enter run  esc b…

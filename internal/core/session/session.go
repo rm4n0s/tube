@@ -42,6 +42,9 @@ type Options struct {
 	Path string
 	// Argv is its argv, argv[0] included.
 	Argv []string
+	// Notes are lines of Tube about how the application is started, written after the line
+	// that says that it runs.
+	Notes []string
 	// ProfileName is for TUBE_PROFILE and the lines.
 	ProfileName string
 	// DNS are the profile's own DNS servers, or none.
@@ -165,6 +168,9 @@ func (s *Session) start(ctx context.Context) error {
 		argv0 = sanitize.Display(s.opts.Argv[0], maxNameInEnv)
 	}
 	s.line(fmt.Sprintf("connected to %s; running %s", s.name, argv0))
+	for _, note := range s.opts.Notes {
+		s.line(note)
+	}
 	s.log.Info("the application runs", "profile", s.name, "addrs", network.Addrs, "dns", s.dnsOf(network), "mtu", network.MTU)
 	return nil
 }

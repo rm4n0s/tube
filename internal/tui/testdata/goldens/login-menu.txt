@@ -7,9 +7,9 @@
   Password   *******                                                                                
                 ╭───────╮                                                                           
   [x] remember t│ Paste │ame                                                                        
-                ╰───────╯                                                                           
-  [ Connect ]  [ Cancel ]                                                                           
+  [x] remember t╰───────╯rd                                                                         
                                                                                                     
+  [ Connect ]  [ Cancel ]                                                                           
                                                                                                     
                                                                                                     
                                                                                                     

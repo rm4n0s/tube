@@ -23,9 +23,9 @@ type connectedMsg struct{ err error }
 
 // connecting is the state of the connecting page.
 type connecting struct {
-	name    string
-	started time.Time
-	cancel  context.CancelFunc
+	id, name string
+	started  time.Time
+	cancel   context.CancelFunc
 	// cancelling says that esc was pressed: the connect is being cancelled.
 	cancelling bool
 	// login is the login page that the connect came from, or nil.
@@ -36,10 +36,10 @@ type connecting struct {
 
 // connect opens the connecting page and returns the command that connects. The credentials
 // live in the command until Connect returns.
-func (m Model) connect(id, name string, creds *app.Credentials, remember bool, login *loginPage) (Model, tea.Cmd) {
+func (m Model) connect(id, name string, creds *app.Credentials, remember app.Remember, login *loginPage) (Model, tea.Cmd) {
 	ctx, cancel := context.WithCancel(m.ctx)
 	m.page = pageConnecting
-	m.conn = &connecting{name: name, started: m.clock.Now(), cancel: cancel, login: login}
+	m.conn = &connecting{id: id, name: name, started: m.clock.Now(), cancel: cancel, login: login}
 	m.now = m.conn.started
 	a := m.app
 	return m, func() tea.Msg {
@@ -98,11 +98,37 @@ func (m Model) connected(msg connectedMsg) (Model, tea.Cmd) {
 		m.page, m.login = pageLogin, login
 		m.setError(msg.err)
 		return m, nil
+	case msg.err != nil && app.IsAuthFailed(msg.err) && m.asksPassword(c.id):
+		// The remembered password was refused: the login page asks for another one.
+		m.page = pageProfiles
+		if m.prof != nil {
+			m.page = pageProfile
+		}
+		p, _ := m.profileByID(c.id)
+		m = m.openLogin(p)
+		m.setError(msg.err)
+		return m, nil
 	default:
 		m.page, m.prof = pageProfiles, nil
 		m.setError(msg.err)
 		return m, m.readSnapshot()
 	}
+}
+
+// profileByID is the profile of the snapshot with the id.
+func (m Model) profileByID(id string) (app.Profile, bool) {
+	for _, p := range m.snap.Profiles {
+		if p.ID == id {
+			return p, true
+		}
+	}
+	return app.Profile{}, false
+}
+
+// asksPassword says whether the profile with the id asks for a user name and a password.
+func (m Model) asksPassword(id string) bool {
+	p, ok := m.profileByID(id)
+	return ok && p.NeedsPassword
 }
 
 // connectingBody is the connecting page.

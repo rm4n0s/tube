@@ -103,7 +103,7 @@ func (a *App) Start(ctx context.Context) error {
 			a.mu.Unlock()
 		}
 	}()
-	tk, err := a.takeTunnel()
+	tk, err := a.takeTunnel(ctx)
 	if err != nil {
 		return err
 	}
@@ -128,7 +128,7 @@ func (a *App) Start(ctx context.Context) error {
 	go a.join(r)
 	a.log.Info("run started", "profile", p.ID, "name", p.Name, "application", r.appName, "terminal", true)
 	s, err := session.Start(ctx, session.Options{
-		Tunnel: tun, Dirs: a.dirs, Path: path, Argv: a.opts.Argv, ProfileName: p.Name, DNS: p.DNS,
+		Tunnel: tun, Dirs: a.dirs, Path: path, Argv: tk.argv, Notes: notes(tk.note), ProfileName: p.Name, DNS: p.DNS,
 		Logger: a.log, Lines: eventWriter{a: a, r: r}, Clock: a.opts.Clock, ExtraEnv: []string{"TERM=dumb"},
 		Sandbox:  sandbox.Options{Stdin: slave, Stdout: slave, Stderr: slave, Terminal: true},
 		Redial:   a.redialer(p.ID, creds),
@@ -349,7 +349,7 @@ func (a *App) Disconnect() {
 // Switch connects the profile and gives it to the running application in place of the VPN it
 // has. The VPN in use stays until the new one is connected; when the new one fails, nothing
 // changes.
-func (a *App) Switch(ctx context.Context, id string, creds *Credentials, remember bool) error {
+func (a *App) Switch(ctx context.Context, id string, creds *Credentials, remember Remember) error {
 	r := a.startedRun()
 	if r == nil {
 		return errors.New(TagNotStarted, "the application was not started")
@@ -428,14 +428,22 @@ type dialed struct {
 
 // dial connects the profile, logs it, marks the profile as used and, with remember, keeps the
 // user name of the credentials as the profile's.
-func (a *App) dial(ctx context.Context, id string, creds *Credentials, remember bool) (dialed, error) {
+func (a *App) dial(ctx context.Context, id string, creds *Credentials, remember Remember) (dialed, error) {
 	p, err := a.store.Get(ctx, id)
 	if err != nil {
 		return dialed{}, err
 	}
 	var vc *vpn.Credentials
-	if creds != nil {
+	switch {
+	case creds != nil:
 		vc = &vpn.Credentials{Username: creds.Username, Password: creds.Password}
+	case p.NeedsPassword && p.HasPassword:
+		// No credentials were given: the remembered ones are used.
+		password, err := a.store.Password(ctx, id)
+		if err != nil {
+			return dialed{}, err
+		}
+		vc = &vpn.Credentials{Username: p.Username, Password: password}
 	}
 	tun, err := vpn.Dial(ctx, p, vc)
 	if err != nil {
@@ -450,17 +458,42 @@ func (a *App) dial(ctx context.Context, id string, creds *Credentials, remember 
 	} else {
 		changed = true
 	}
-	if remember && creds != nil {
-		if err := a.store.SetUsername(ctx, id, creds.Username); err != nil {
-			a.log.Warn("the user name cannot be remembered", "err", err, "profile", id)
-		} else {
-			changed = true
-		}
+	if creds != nil && a.remember(ctx, p, creds, remember) {
+		changed = true
 	}
 	if changed {
 		a.notify()
 	}
 	return dialed{tun: tun, p: p, creds: vc}, nil
+}
+
+// remember keeps, of the credentials that just connected the profile, what remember says, and
+// says whether the profile changed. A failure is logged: the connection stands. The password is
+// kept with its user name, without which it is of no use.
+func (a *App) remember(ctx context.Context, p profiles.Profile, creds *Credentials, remember Remember) bool {
+	changed := false
+	if remember.User || remember.Password {
+		if err := a.store.SetUsername(ctx, p.ID, creds.Username); err != nil {
+			a.log.Warn("the user name cannot be remembered", "err", err, "profile", p.ID)
+		} else {
+			changed = true
+		}
+	}
+	switch {
+	case remember.Password:
+		if err := a.store.SetPassword(ctx, p.ID, creds.Password); err != nil {
+			a.log.Warn("the password cannot be remembered", "err", err, "profile", p.ID)
+		} else {
+			changed = true
+		}
+	case remember.Forget && p.HasPassword:
+		if err := a.store.SetPassword(ctx, p.ID, ""); err != nil {
+			a.log.Warn("the password cannot be forgotten", "err", err, "profile", p.ID)
+		} else {
+			changed = true
+		}
+	}
+	return changed
 }
 
 // killLater sends SIGKILL to the application when a SIGTERM or SIGHUP has not ended it after

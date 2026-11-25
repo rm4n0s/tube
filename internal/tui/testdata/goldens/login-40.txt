@@ -1,0 +1,10 @@
+ Tube   select a profile to run firefox 
+────────────────────────────────────────
+  User name  ada                        
+  Password   *******                    
+  [x] remember the user name            
+  [x] remember the password             
+  [ Connect ]  [ Cancel ]               
+────────────────────────────────────────
+                                        
+tab ↑↓ field  space remember  enter con…

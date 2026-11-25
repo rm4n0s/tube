@@ -105,6 +105,7 @@ ignores. Its keys:
 |---|---|
 | `r` | rename |
 | `u` | the user name to remember |
+| `p` | forget the remembered password (only when one is remembered) |
 | `n` | the DNS servers (see "DNS servers of a profile") |
 | `t` | edit the text of the profile in your editor (`$VISUAL`, else `$EDITOR`, else `nano` or `vi`) |
 | `d` | delete |
@@ -181,18 +182,26 @@ that runs to do it. A second `firefox` asks the first one to open a window. A te
 asks its server. The process that does the work is outside Tube's namespace, so **its traffic is
 not in the VPN**.
 
-For Firefox and Thunderbird, Tube sets `MOZ_NO_REMOTE=1`. With a Firefox already open on the same
-profile, `tube firefox` then refuses to start, instead of opening a window outside the VPN. To
-run a second Firefox inside the VPN, give it another Firefox profile:
+**For Firefox (and Thunderbird), Tube takes care of it.** `tube firefox` always starts a Firefox
+of its own, on a Firefox profile that Tube keeps for it, so it is a separate process inside the
+VPN, also while your normal Firefox is open. Tube says so in a line of the Status tab:
 
 ```
-tube firefox -P tube --no-remote
+firefox runs on a profile of its own, which Tube keeps: it is apart from a firefox that is already open
 ```
 
-(`-P` without a name opens Firefox's profile manager, where you can make one.)
+What this means for you:
 
-Tube cannot know this for every program. When you are not sure, quit the program everywhere
-before you start it with Tube.
+- Tube's Firefox has its own history, logins, bookmarks and settings. The ones of your normal
+  Firefox are not in it, and what you do in it stays apart from your normal Firefox. It is kept
+  between runs, in Tube's state folder (`firefox-profile`, see "Where Tube keeps its files").
+- Your normal Firefox, open beside it, keeps using the machine's own network.
+- To use a Firefox profile of your choice, name it: `tube firefox -P work`. Tube then adds
+  nothing. But when a Firefox is already open **on that same profile**, Firefox opens the window
+  there, outside the VPN, and Tube cannot stop it: close that Firefox first.
+
+Tube cannot know this for every other program. When you are not sure, quit the program
+everywhere before you start it with Tube.
 
 ## DNS servers of a profile
 
@@ -212,8 +221,17 @@ means "the ones that the VPN sends".
 A profile that asks for a user name and a password opens the login page before it connects. The
 user name is filled in when it was remembered, and "remember the user name" is on by default
 (`space` turns it). The password is drawn as stars, one `*` for each character, never as the
-characters. It is kept in memory only, for connecting again after the VPN dropped, and **Tube
-never writes it to a file**. You give it each time.
+characters.
+
+**The password is remembered too**, when "remember the password" is on (it is, by default) and
+the login worked. The next time, Tube connects that profile at once, without the login page,
+also with `tube --profile <name>`. Tube keeps the password in a file that only you can read
+(mode 600), in the folder of the profile, the way it keeps the profile's private key: it is not
+encrypted, and who can read your files can read it. To have Tube ask each time, turn the mark
+off before you connect. To forget a remembered password, open the profile's page (`e`) and
+press `p`: its line says `Password  remembered`, or `asked each time`. When the server refuses a
+remembered password (you changed it at your provider), the login page opens again for the new
+one.
 
 You do not have to type them. Copy the user name (or the password) where your provider shows
 it, **click the right button of the mouse in the field**, and click `Paste` in the menu that
@@ -356,8 +374,8 @@ Any other error shows its own message. When it is not clear, look at the log, an
 
 | Folder | Where | What is in it |
 |---|---|---|
-| Configuration | `$TUBE_CONFIG_DIR`, else `$XDG_CONFIG_HOME/tube`, else `~/.config/tube` | your profiles: `profiles/<id>/meta.json` and `profiles/<id>/files/...` |
-| State | `$TUBE_STATE_DIR`, else `$XDG_STATE_HOME/tube`, else `~/.local/state/tube` | the log |
+| Configuration | `$TUBE_CONFIG_DIR`, else `$XDG_CONFIG_HOME/tube`, else `~/.config/tube` | your profiles: `profiles/<id>/meta.json`, `profiles/<id>/files/...`, and `profiles/<id>/password` when the password is remembered |
+| State | `$TUBE_STATE_DIR`, else `$XDG_STATE_HOME/tube`, else `~/.local/state/tube` | the log; `state.json` (the folder of the last add); `firefox-profile/` and `thunderbird-profile/` (Tube's own profiles of these programs) |
 | Temporary | a new folder under `$XDG_RUNTIME_DIR`, else under the system's temporary folder | what the namespace needs while an application runs; removed at the end |
 
 Every folder that Tube makes has mode 0700 and every file mode 0600. Several Tubes may run at

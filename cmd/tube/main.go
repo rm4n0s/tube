@@ -168,22 +168,25 @@ func (c cli) runApp(ctx context.Context, a *app.App, f flags) int {
 	if f.profile == "" {
 		return c.runTUI(ctx, a, f)
 	}
-	id, needsPassword, username, err := a.FindProfile(ctx, f.profile)
+	found, err := a.FindProfile(ctx, f.profile)
 	if err != nil {
 		return c.fail(err)
 	}
+	id := found.ID
+	// The credentials are the ones of --auth-file; else the remembered ones (the app takes
+	// them when none are given); else they are asked for on the terminal.
 	var creds *app.Credentials
-	if needsPassword {
-		got, err := c.credentials(f.authFile, username)
+	if found.NeedsPassword && (f.authFile != "" || !found.HasPassword) {
+		got, err := c.credentials(f.authFile, found.Username)
 		if err != nil {
 			return c.fail(err)
 		}
 		creds = &got
 	}
 	// SIGINT, SIGTERM and SIGHUP cancel the connect. A script does not change the profile:
-	// the user name is not remembered.
+	// nothing of the credentials is remembered, and nothing that was is forgotten.
 	connectCtx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
-	err = a.Connect(connectCtx, id, creds, false)
+	err = a.Connect(connectCtx, id, creds, app.Remember{})
 	interrupted := connectCtx.Err() != nil && ctx.Err() == nil
 	stop()
 	if err != nil {

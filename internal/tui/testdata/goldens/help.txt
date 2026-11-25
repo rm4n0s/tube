@@ -3,7 +3,8 @@
   Profiles — ↑↓ jk: move · enter: run · a: add · e: open · d: delete · ?: keys · q: quit            
   Add: the folder — ↑↓: move · enter: open · backspace: folder above · tab: fields · esc: back      
   Add: the fields — tab: complete · ↑↓: field · space: all files · enter: add · esc: back           
-  Profile — r: rename · u: user · n: DNS · t: edit · d: delete · enter: run · esc: back             
+  Profile — r: rename · u: user · p: forget password · n: DNS · t: edit · d: delete · enter: run ·  
+  esc: back                                                                                         
   Login — tab ↑↓: field · space: remember · enter: connect · esc: back                              
   Connecting — esc: cancel                                                                          
   Status — tab shift+tab: tabs · q: quit · ?: keys                                                  
@@ -23,7 +24,6 @@ it.
 Without the VPN the application has no network at all: Tube never lets it use the machine's.        
 A program that hands its work to one that already runs (a second firefox, a terminal's server) is   
 not in the VPN.                                                                                     
-                                                                                                    
                                                                                                     
 ────────────────────────────────────────────────────────────────────────────────────────────────────
                                                                                                     

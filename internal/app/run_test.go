@@ -448,7 +448,7 @@ func TestStartTwice(t *testing.T) {
 func TestStartWithoutConnect(t *testing.T) {
 	a, _ := open(t, "true")
 	errtest.Route(t, a.Start(context.Background()), "App.Start->App.takeTunnel.AppNotConnected")
-	errtest.Route(t, a.Switch(context.Background(), "x", nil, false), "App.Switch.AppNotStarted")
+	errtest.Route(t, a.Switch(context.Background(), "x", nil, Remember{}), "App.Switch.AppNotStarted")
 	if status, err := a.Finish(); status != 0 || err != nil {
 		t.Errorf("Finish without Start = %d, %v", status, err)
 	}

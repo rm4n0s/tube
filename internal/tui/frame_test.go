@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"charm.land/lipgloss/v2"
+	"github.com/rm4n0s/tube/internal/app"
 	"github.com/rm4n0s/tube/internal/app/apptest"
 )
 
@@ -52,7 +53,7 @@ func TestEveryLineFits(t *testing.T) {
 					h.keys("down", "enter", "tab", "tab")
 				case "connecting":
 					m := h.m()
-					m, _ = m.connect("id-long", m.snap.Profiles[4].Name, nil, false, nil)
+					m, _ = m.connect("id-long", m.snap.Profiles[4].Name, nil, app.Remember{}, nil)
 					h.model = m
 				case "profile", "field":
 					h.keys("down", "e")

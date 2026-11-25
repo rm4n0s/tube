@@ -61,7 +61,7 @@ func (s switching) switchTo(t *testing.T, id string, creds *Credentials) error {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	return s.a.Switch(ctx, id, creds, false)
+	return s.a.Switch(ctx, id, creds, Remember{})
 }
 
 func TestSwitch(t *testing.T) {

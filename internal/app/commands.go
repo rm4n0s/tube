@@ -78,6 +78,11 @@ func (a *App) RenameProfile(ctx context.Context, id, name string) error {
 	return a.changed(a.store.Rename(ctx, id, name))
 }
 
+// ForgetPassword forgets the remembered password of the profile: the next connect asks for it.
+func (a *App) ForgetPassword(ctx context.Context, id string) error {
+	return a.changed(a.store.SetPassword(ctx, id, ""))
+}
+
 // SetUsername sets the remembered user name of the profile; "" forgets it.
 func (a *App) SetUsername(ctx context.Context, id, username string) error {
 	return a.changed(a.store.SetUsername(ctx, id, username))

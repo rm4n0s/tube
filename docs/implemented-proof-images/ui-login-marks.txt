@@ -1,0 +1,30 @@
+ Tube   select a profile to run true
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  The profile Work asks for a user name and a password.
+
+  User name  ada
+  Password   ******
+
+  [x] remember the user name
+  [x] remember the password
+
+  [ Connect ]  [ Cancel ]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+tab ↑↓ field   space remember   enter connect   esc back

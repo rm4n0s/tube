@@ -48,6 +48,16 @@ func setup(t *testing.T, bin string, opts vpntest.ServerOptions) (e2e, *vpntest.
 	return e2e{bin: bin, env: env}, server
 }
 
+// dir is the folder that a variable of the program's environment names.
+func (e e2e) dir(name string) string {
+	for _, kv := range e.env {
+		if value, ok := strings.CutPrefix(kv, name+"="); ok {
+			return value
+		}
+	}
+	return ""
+}
+
 // command is the program with the arguments, under a context of 60 seconds.
 func (e e2e) command(t *testing.T, args ...string) *exec.Cmd {
 	t.Helper()
@@ -165,6 +175,72 @@ func TestEndToEnd(t *testing.T) {
 			if status != tt.status || stderr != tt.stderr {
 				t.Errorf("the password %s: status %d, standard error %q", tt.password, status, stderr)
 			}
+		}
+	})
+	t.Run("the remembered password", func(t *testing.T) {
+		e, _ := setup(t, bin, vpntest.ServerOptions{Username: "alice", Password: "right"})
+		ctx := context.Background()
+		store := profiles.NewStore(e.dir("TUBE_CONFIG_DIR"), clock.System())
+		list, err := store.List(ctx)
+		if err != nil || len(list) != 1 {
+			t.Fatalf("the profiles are %+v, %v", list, err)
+		}
+		id := list[0].ID
+		remember := func(password string) {
+			t.Helper()
+			if err := store.SetUsername(ctx, id, "alice"); err != nil {
+				t.Fatal(err)
+			}
+			if err := store.SetPassword(ctx, id, password); err != nil {
+				t.Fatal(err)
+			}
+		}
+		// Nothing is asked: there is no terminal here to ask on, and no file.
+		remember("right")
+		if status, _, stderr := e.run(t, "--quiet", "--profile", "test", "true"); status != 0 || stderr != "" {
+			t.Errorf("with the remembered password: status %d, standard error %q", status, stderr)
+		}
+		// A remembered password that is wrong is a refused login; the file of --auth-file wins
+		// over it, and does not change it.
+		remember("stale")
+		status, _, stderr := e.run(t, "--quiet", "--profile", "test", "true")
+		if status != 125 || stderr != "tube: The VPN server refused the user name or the password. (AuthFailed)\n" {
+			t.Errorf("with a stale remembered password: status %d, standard error %q", status, stderr)
+		}
+		auth := filepath.Join(t.TempDir(), "auth")
+		if err := os.WriteFile(auth, []byte("alice\nright\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if status, _, stderr := e.run(t, "--quiet", "--profile", "test", "--auth-file", auth, "true"); status != 0 || stderr != "" {
+			t.Errorf("with --auth-file: status %d, standard error %q", status, stderr)
+		}
+		if got, err := store.Password(ctx, id); err != nil || got != "stale" {
+			t.Errorf("--auth-file changed the remembered password: %v", err)
+		}
+	})
+	t.Run("a firefox gets a profile of its own", func(t *testing.T) {
+		e, _ := setup(t, bin, vpntest.ServerOptions{})
+		// A program of the test with the name of Firefox, which prints its arguments: the real
+		// one is never started.
+		fake := filepath.Join(t.TempDir(), "firefox")
+		if err := os.WriteFile(fake, []byte("#!/bin/sh\nprintf '%s\\n' \"$@\"\n"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		own := filepath.Join(e.dir("TUBE_STATE_DIR"), "firefox-profile")
+		status, stdout, stderr := e.run(t, "--profile", "test", fake, "https://example.com")
+		if want := "--no-remote\n--profile\n" + own + "\nhttps://example.com\n"; status != 0 || stdout != want {
+			t.Errorf("status %d, the arguments were %q, want %q; standard error:\n%s", status, stdout, want, stderr)
+		}
+		if !strings.Contains(stderr, "tube: firefox runs on a profile of its own, which Tube keeps") {
+			t.Errorf("no line about the profile:\n%s", stderr)
+		}
+		if info, err := os.Stat(own); err != nil || info.Mode().Perm() != 0o700 {
+			t.Errorf("the folder of the profile: %v, %v", info, err)
+		}
+		// A profile that the user chose stays the user's.
+		status, stdout, _ = e.run(t, "--quiet", "--profile", "test", fake, "-P", "mine")
+		if status != 0 || stdout != "-P\nmine\n" {
+			t.Errorf("status %d, the arguments were %q", status, stdout)
 		}
 	})
 	t.Run("the application is not found", func(t *testing.T) {

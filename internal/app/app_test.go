@@ -146,7 +146,8 @@ func TestFindProfile(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			id, needsPassword, username, err := a.FindProfile(context.Background(), tt.name)
+			found, err := a.FindProfile(context.Background(), tt.name)
+			id, needsPassword, username := found.ID, found.NeedsPassword, found.Username
 			if tt.route != "" {
 				meta := errtest.Route(t, err, tt.route)
 				if meta["name"] != tt.name {
@@ -167,12 +168,12 @@ func TestFindProfile(t *testing.T) {
 func TestConnectNeedsCredentials(t *testing.T) {
 	a, dirs := open(t)
 	p := addProfile(t, a, "Work", profilestest.Options{Password: true})
-	err := a.Connect(context.Background(), p.ID, nil, false)
+	err := a.Connect(context.Background(), p.ID, nil, Remember{})
 	errtest.Route(t, err, "Dial.VPNCredentialsNeeded")
 	// A server that does not answer: the credentials go nowhere, and stay out of the log.
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
-	if err := a.Connect(ctx, p.ID, &Credentials{Username: "alice", Password: "hunter2"}, true); err == nil {
+	if err := a.Connect(ctx, p.ID, &Credentials{Username: "alice", Password: "hunter2"}, Remember{User: true}); err == nil {
 		t.Fatal("a connection to nothing worked")
 	}
 	log := logText(t, dirs)

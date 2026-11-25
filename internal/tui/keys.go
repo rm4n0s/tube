@@ -43,7 +43,7 @@ type pageBindings struct {
 // they cannot disagree. withTarget says whether there is an application to run.
 func bindings(withTarget bool) []pageBindings {
 	enter := binding{"enter", "open"}
-	profile := []binding{{"r", "rename"}, {"u", "user"}, {"n", "DNS"}, {"t", "edit"}, {"d", "delete"}}
+	profile := []binding{{"r", "rename"}, {"u", "user"}, {"p", "forget password"}, {"n", "DNS"}, {"t", "edit"}, {"d", "delete"}}
 	if withTarget {
 		enter = binding{"enter", "run"}
 		profile = append(profile, enter)

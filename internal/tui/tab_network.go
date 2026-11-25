@@ -149,17 +149,18 @@ func (m Model) chooseProfile() (Model, tea.Cmd) {
 	case p.ID == st.ProfileID && st.State == "connected":
 		m.setNotice(st.AppName + " already uses " + p.Name + ".")
 		return m, nil
-	case p.NeedsPassword:
+	case p.NeedsPassword && !p.HasPassword:
 		m = m.openLogin(p)
 		m.login.forSwitch = true
 		return m, nil
 	}
-	return m.switchTo(p.ID, p.Name, nil, false, nil)
+	// Without credentials the app uses the remembered ones.
+	return m.switchTo(p.ID, p.Name, nil, app.Remember{}, nil)
 }
 
 // switchTo starts a switch and returns its command. The credentials live in the command until
 // Switch returns.
-func (m Model) switchTo(id, name string, creds *app.Credentials, remember bool, login *loginPage) (Model, tea.Cmd) {
+func (m Model) switchTo(id, name string, creds *app.Credentials, remember app.Remember, login *loginPage) (Model, tea.Cmd) {
 	ctx, cancel := context.WithCancel(m.ctx)
 	r := *m.run
 	r.switching = &switching{id: id, name: name, started: m.clock.Now(), cancel: cancel, login: login}
@@ -191,6 +192,12 @@ func (m Model) switched(msg switchedMsg) (Model, tea.Cmd) {
 		l.pass = field{limit: maxPasswordLen, secret: true}
 		l.focus = focusPassword
 		m.page, m.login = pageLogin, &l
+		m.setError(msg.err)
+	case app.IsAuthFailed(msg.err) && m.asksPassword(s.id):
+		// The remembered password was refused: the login page asks for another one.
+		p, _ := m.profileByID(s.id)
+		m = m.openLogin(p)
+		m.login.forSwitch = true
 		m.setError(msg.err)
 	default:
 		m.setError(msg.err)

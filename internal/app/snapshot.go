@@ -21,7 +21,10 @@ type Profile struct {
 	// Remotes are the servers, as "vpn.example.com:1194 udp".
 	Remotes       []string
 	NeedsPassword bool
-	Username      string
+	// HasPassword says that the password is remembered: the profile connects without the
+	// login page. The password itself is never in a snapshot.
+	HasPassword bool
+	Username    string
 	// DNS are the profile's own DNS servers.
 	DNS []string
 	// LastUsed is when it was last connected; the zero time: never.
@@ -64,7 +67,7 @@ func (a *App) Snapshot(ctx context.Context) (Snapshot, error) {
 // profileOf is a stored profile as the TUI shows it. The store made its strings safe.
 func profileOf(p profiles.Profile) Profile {
 	out := Profile{
-		ID: p.ID, Name: p.Name, NeedsPassword: p.NeedsPassword, Username: p.Username, LastUsed: p.LastUsed,
+		ID: p.ID, Name: p.Name, NeedsPassword: p.NeedsPassword, HasPassword: p.HasPassword, Username: p.Username, LastUsed: p.LastUsed,
 		Ignored: p.Ignored, Files: p.Files, Broken: p.Broken,
 	}
 	for _, r := range p.Remotes {

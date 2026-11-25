@@ -35,8 +35,11 @@ nothing of the machine: no device, address, route, firewall rule or DNS setting 
 private namespace.
 
 **Keys and passwords stay private.** Profiles and every file that holds a key are written with
-mode 0600, in folders of mode 0700. A password is kept in memory only, and is never written to a
-file, a log, an error, or the screen. Tests check the modes, and check that a known secret
+mode 0600, in folders of mode 0700. A password is never written to a log, an error, or the
+screen (the login page draws stars). It is kept in memory, and, **when you let Tube remember it,
+in a file of mode 0600 in the profile's folder, not encrypted**: it is as private as the
+profile's private key beside it, and who can read your files can read both. Turn "remember the
+password" off on the login page, or forget it on the profile's page, to have none on disk. Tests check the modes, and check that a known secret
 appears in no log line and no error.
 
 **Hostile text cannot reach your terminal.** Everything that comes from a profile or a VPN server
@@ -58,7 +61,9 @@ VPN connection behind the same device; the namespace does not change.
 - **Programs that hand their work to a process outside the namespace.** A second `firefox`, a
   terminal emulator's client, or a program that asks a daemon of the machine (over D-Bus or a
   Unix socket) to do network work for it: that work is done outside the VPN. `docs/GUIDE.md`
-  ("Firefox and other programs that are already open") says what Tube does for Firefox.
+  ("Firefox and other programs that are already open") says what Tube does for Firefox: it runs
+  on a Firefox profile of Tube's own, so that it is never handed to a Firefox that is open. A
+  Firefox profile that you name yourself (`tube firefox -P work`) is not protected that way.
 - **The rest of the machine.** Every other program keeps using the machine's own network.
 - **Services on the machine's own `127.0.0.1`.** The application cannot reach them, and nothing
   of them is protected or exposed by Tube.

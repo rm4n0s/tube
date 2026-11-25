@@ -27,10 +27,10 @@ Tube runs one application through a VPN, and only that application. This file is
 | D9 | Go, cgo-free. The TUI is built on Bubble Tea v2 and Lip Gloss v2 (`charm.land/...`), and on nothing else of Charm (no `bubbles`): Tube's own list, text field and question are in `internal/tui` | follows D1 (Cave's D4) |
 | D10 | The namespace always has a default route into the tunnel, for every address family the VPN gave an address for, whatever routes the server pushed | D2: all the network of the application; the namespace has nothing else to route to |
 | D11 | A profile is stored as a copy: the profile file and the files it names, in Tube's configuration folder | a profile must keep working when the downloaded file is moved or deleted |
-| D12 | A password is asked for each time and is never written to a file; the user name can be remembered | the safe default; change it when the user asks |
+| D12 | The user name can be remembered. The password was asked for each time and never written to a file, as the safe default, until the user asked for it to be remembered: see D27 | the safe default; changed by D27 |
 | D13 | `--profile <name>` runs the application with a profile without showing the TUI | scripts, programs that need the whole terminal (D19) and the tests against the real server need a way without a terminal UI |
 | D14 | When the VPN connection ends by itself while the application runs, Tube connects again by itself; the application has no network in between. After the user disconnected (D17), Tube does not | a browser session outlives a short loss of the link; D2's "nothing else" still holds |
-| D15 | Tube sets `MOZ_NO_REMOTE=1` for the application | without it `tube firefox`, with a Firefox already open, hands the page to the open one, which is outside the VPN (§8.7) |
+| D15 | Tube sets `MOZ_NO_REMOTE=1` for the application. It is kept, but it is not what keeps Firefox in the VPN any more: see D28 | without it `tube firefox`, with a Firefox already open, handed the page to the open one, which is outside the VPN (§8.7); Firefox 160 hands it over all the same |
 | D16 | After a profile is selected, the TUI starts the application and stays open, with two tabs: one that shows the connection and its traffic (Status), one that shows the output of the application (Output) | the user, 2026-11-25 ("it will have two tabs in the TUI, one that show bandwidth etc and the other the output of the application") |
 | D17 | A third tab (Network) lets the user select and use another profile, or disconnect the network altogether, while the application is running | the user, 2026-11-25 |
 | D18 | In the TUI the application runs on a pseudo-terminal that Tube reads, with `TERM=dumb`. The Output tab shows what it prints as plain lines, and the keys typed on that tab go to the application | follows D16: the user's terminal belongs to the TUI, and a program whose output is a pipe holds its lines back; with the keys, Ctrl-C still stops `ping` |
@@ -42,6 +42,8 @@ Tube runs one application through a VPN, and only that application. This file is
 | D24 | The list of folders of the add page starts in the home folder, and the folder of the last add is remembered, also between two runs: the next add starts there | the user, 2026-11-25 ("the file browser will start from the home and the latest used folder path will be remembered for the next add") |
 | D25 | A click of the right button in a field opens a menu with `Paste` when the clipboard has text. Tube reads the clipboard with the desktop's own program (`wl-paste`, `xclip`, `xsel`), and asks the terminal when there is none | the user, 2026-11-25 ("the username and password will have right click menu with paste button if clipboard has string"); how the clipboard is read follows from what terminals allow: most do not answer a program that asks for it |
 | D26 | The password field draws a `*` for each character, never the characters. This replaces "drawn as nothing" of the first plan | the user, 2026-11-25 ("the password show ******** and not empty") |
+| D27 | The password of a profile can be remembered: in a file that only the user can read, in the profile's folder (§6.6). The login page has a mark for it, on by default, and a profile whose password is remembered connects without the login page | the user, 2026-11-25 ("make it remember password"); where it is kept: the user, 2026-11-25, asked ("A file by the profile") |
+| D28 | `tube firefox` (and `thunderbird`) always runs on a profile of its own, which Tube keeps between runs, unless the arguments choose a profile: it is then a process of its own, inside the VPN, whether or not the user's Firefox is open | the user, 2026-11-25 ("if the user has already open firefox, then the new firefox windows uses the default network of the user, not the VPN"; asked: "Tube's own profile") |
 
 ## 3. Platform and requirements
 
@@ -116,8 +118,8 @@ cmd/tube ──► internal/tui ──► internal/app ──► internal/core/.
 
 | Folder | Where | What is in it |
 |---|---|---|
-| Configuration | `$TUBE_CONFIG_DIR`, else `$XDG_CONFIG_HOME/tube`, else `~/.config/tube` | `profiles/<id>/meta.json`, `profiles/<id>/files/...` |
-| State | `$TUBE_STATE_DIR`, else `$XDG_STATE_HOME/tube`, else `~/.local/state/tube` | `tube.log`, `tube.log.1`, `state.json` |
+| Configuration | `$TUBE_CONFIG_DIR`, else `$XDG_CONFIG_HOME/tube`, else `~/.config/tube` | `profiles/<id>/meta.json`, `profiles/<id>/files/...`, `profiles/<id>/password` (§6.6) |
+| State | `$TUBE_STATE_DIR`, else `$XDG_STATE_HOME/tube`, else `~/.local/state/tube` | `tube.log`, `tube.log.1`, `state.json`, `firefox-profile/`, `thunderbird-profile/` (§8.7) |
 | Temporary | a new folder under `$XDG_RUNTIME_DIR`, else under `os.TempDir()`, one per run, removed at the end | what the namespace needs (§8.4) |
 
 - Every folder Tube makes has mode 0700 and every file mode 0600, whatever the umask. A folder that exists with wider rights is narrowed when Tube first writes into it.
@@ -166,6 +168,17 @@ For each profile: the name, the first remote (`host:port` and `udp` or `tcp`) an
 ### 6.5 Hostile text
 
 A profile, and everything a VPN server sends, is hostile text. `sanitize.Display(s, max)` replaces every unsafe character with U+FFFD (control characters, so also the escape character and the new line; Unicode format characters such as the bidirectional controls; the line and paragraph separators; invalid UTF-8) and cuts to `max` characters, the last being `…` when it cut. Everything from a profile or a server passes through it before it is stored in `meta.json`, logged or drawn. A secret is never drawn, also not sanitized: the TUI shows of a profile only what §6.4 lists.
+
+### 6.6 The remembered password
+
+The user name of a profile is remembered in `meta.json` (`username`). The password can be remembered too (D27): it is the content of the file `profiles/<id>/password`, next to `meta.json`, written atomically with mode 0600 like every file of Tube; at most 4096 bytes. It is not among the files of the profile (`files/`), and it is removed with the profile. Nothing but the bytes of the password is in it, and they are in no other file, no log, no error, and no snapshot: a profile only says that it has one.
+
+- A connect that was given credentials keeps, when it worked, what the caller says: the user name; the password (and the user name with it, without which it is of no use); or it forgets a password that was remembered, when the user was asked and did not want it kept. A connect that failed keeps nothing.
+- A connect that is given no credentials, for a profile that asks for them and has a remembered password, uses the remembered user name and password. A remembered password that the server refuses is a refused login like another; it stays until the user gives another one or forgets it.
+- A script (`--profile` with `--auth-file`) changes nothing: it remembers nothing and forgets nothing.
+- The profile's page forgets the password (§13.4).
+
+This is as private as the private key of the profile, which is in a file of the same mode beside it: who can read the user's files can read both. `docs/SECURITY.md` says so.
 
 ## 7. The VPN connection
 
@@ -238,7 +251,7 @@ The DNS servers of a run are the ones the user set for the profile (§6.3), else
 
 ### 8.5 The application
 
-On `run` the keeper starts the application in a nested user namespace (`CLONE_NEWUSER`) in which the user's own uid and gid are mapped back: the application sees itself as the user, owns its files as always, and has no capability over the network namespace, so it cannot change the addresses, the routes or the device. It gets the keeper's working folder and environment, with `TUBE=1`, `TUBE_PROFILE=<name>` and `MOZ_NO_REMOTE=1` added (D15).
+On `run` the keeper starts the application in a nested user namespace (`CLONE_NEWUSER`) in which the user's own uid and gid are mapped back: the application sees itself as the user, owns its files as always, and has no capability over the network namespace, so it cannot change the addresses, the routes or the device. It gets the keeper's working folder and environment, with `TUBE=1`, `TUBE_PROFILE=<name>` and `MOZ_NO_REMOTE=1` added (D15). Its arguments are the user's, but for Firefox and Thunderbird, which get a profile of their own (§8.7).
 
 Its terminal depends on how Tube was started:
 
@@ -253,7 +266,13 @@ Everything but the network: the files, the home folder, the environment, the dis
 
 ### 8.7 Programs that hand their work over
 
-A program that, instead of working itself, asks a process that already runs to do it, is not in the VPN: that process is outside the namespace. A second `firefox` asks the first one to open a window; a terminal emulator asks its server. For Firefox and Thunderbird, Tube sets `MOZ_NO_REMOTE=1` (D15): with a Firefox already open on the same profile, `tube firefox` then refuses to start instead of opening a window outside the VPN, and `tube firefox -P <another profile>` starts a second Firefox inside it. `docs/GUIDE.md` says this for the user. Tube cannot know it for every program.
+A program that, instead of working itself, asks a process that already runs to do it, is not in the VPN: that process is outside the namespace. A second `firefox` asks the first one to open a window; a terminal emulator asks its server.
+
+**Firefox and Thunderbird** (D28). Started on a profile that is already open, Firefox hands the start over to the Firefox that runs, over the session's D-Bus, which the application shares with the machine (§8.6). `MOZ_NO_REMOTE=1` and `--no-remote` do not stop that any more (seen with Firefox 160: the second start ends at once with status 0, with either of them), so the window opens in the user's Firefox, outside the VPN. Started on another profile, it finds no Firefox to hand over to and runs by itself. So when the application's file is called `firefox` or `thunderbird`, or begins with one of these names and a `-` (`firefox-esr`), and its arguments choose no profile (`-P`, `--profile`, `--ProfileManager`, with one `-` or two, in any case), Tube starts it as `<application> --no-remote --profile <state folder>/<firefox or thunderbird>-profile <the user's arguments>`. The folder is made with mode 0700 and kept between runs: it is Tube's own Firefox, with its own history, logins and settings, and without the ones of the user's Firefox. One of Tube's lines says so when the application starts. When the folder cannot be made, the application is not started (§14: never outside the VPN). `MOZ_NO_REMOTE=1` is still set.
+
+- A profile that the user's arguments choose is the user's business: `tube firefox -P work` runs on that profile, and when a Firefox is already open on it, the window opens there, outside the VPN.
+- Two Tubes cannot both run Firefox on Tube's profile at once: the second start is handed to the first, which is in the VPN of the first Tube.
+- Tube cannot know this for every program. `docs/GUIDE.md` says it for the user.
 
 ### 8.8 The check at the start
 
@@ -295,7 +314,7 @@ tube [options]                                      only keep the profiles (the 
 
 - The options end at the first argument that is not one; everything after it is the application and its arguments, untouched.
 - **Without `--profile`**, Tube opens the TUI, which needs a terminal on standard input and output; without one Tube ends with an error that names `--profile`. The user selects a profile; the application starts on a pseudo-terminal and the TUI stays open (§13.8) until the user quits. Tube then exits with the application's status. When the user quits before a profile was selected, the status is 130 (0 when there was no application).
-- **With `--profile <name>`** there is no TUI: Tube connects, the application gets Tube's terminal (D19), and Tube exits with its status when it ends. The profile is the one with exactly that name, else the only one that has it when compared without case. With a profile that asks for a password and no `--auth-file`, Tube asks on the terminal (the user name when none is remembered, then the password, without echo); with no terminal it is an error. `--profile` with no application is a mistake in the arguments. The file of `--auth-file` must be readable by the user only.
+- **With `--profile <name>`** there is no TUI: Tube connects, the application gets Tube's terminal (D19), and Tube exits with its status when it ends. The profile is the one with exactly that name, else the only one that has it when compared without case. With a profile that asks for a password, the credentials are the ones of `--auth-file`; without that option, the remembered ones, when the password is remembered (§6.6); else Tube asks on the terminal (the user name when none is remembered, then the password, without echo); with no terminal it is an error. `--profile` with no application is a mistake in the arguments. The file of `--auth-file` must be readable by the user only.
 - `tube --version` prints `tube <version>`. The version is `devVersion` of `internal/app/version.go`, or the one that the release build sets.
 
 ## 12. The application layer (`internal/app`)
@@ -304,11 +323,11 @@ tube [options]                                      only keep the profiles (the 
 
 ### 12.1 Snapshot
 
-`App.Snapshot()` returns a value that the TUI draws from and never changes: the application to run (its name and arguments, or none), and the profiles of §6.4 (id, name, remotes, needs a password, remembered user name, DNS servers, last used, the ignored options, the names of the files, or the reason it is broken), and the folder of the last add (§5, D24), or none.
+`App.Snapshot()` returns a value that the TUI draws from and never changes: the application to run (its name and arguments, or none), and the profiles of §6.4 (id, name, remotes, needs a password, whether the password is remembered (never the password), remembered user name, DNS servers, last used, the ignored options, the names of the files, or the reason it is broken), and the folder of the last add (§5, D24), or none.
 
 ### 12.2 Commands and changes
 
-The commands block and take a context; the TUI calls each inside a command of its own (a `tea.Cmd`), so its screen never waits. They are: add a profile (path, name, without scripts or not), rename, set the user name, set the DNS servers, begin and end an edit of a profile's text (the App gives the path of a copy for the editor, then reads it back), delete, and connect (profile, credentials, whether to remember the user name). Cancelling the context of a connect cancels it.
+The commands block and take a context; the TUI calls each inside a command of its own (a `tea.Cmd`), so its screen never waits. They are: add a profile (path, name, without scripts or not), rename, set the user name, set the DNS servers, begin and end an edit of a profile's text (the App gives the path of a copy for the editor, then reads it back), delete, forget the remembered password, and connect (profile, credentials or none, and what to remember of them: §6.6). Cancelling the context of a connect cancels it.
 
 `App.Subscribe` registers a function that is called after every change: of the profiles, of the session's state, of the application's output. The calls are joined so that a program that prints fast causes at most about twenty a second.
 
@@ -372,7 +391,7 @@ From the top: **the list of a folder** (D23), the field **File** (the path of th
 
 ### 13.4 The profile's page
 
-Shows: name, every remote, whether it asks for a password, the remembered user name, the DNS servers ("from the VPN" when none is set), the files, the options that are ignored. Keys: `r` rename, `u` user name, `n` DNS servers (each opens one text field on the page; `Enter` saves, `Esc` cancels; a click in the field puts the cursor there), `t` edit the text, `d` delete, `Enter` connect and run (with an application), `Esc` back.
+Shows: name, every remote, whether it asks for a password, the remembered user name, whether the password is remembered ("remembered" or "asked each time", for a profile that asks for one), the DNS servers ("from the VPN" when none is set), the files, the options that are ignored. Keys: `r` rename, `u` user name, `n` DNS servers (each opens one text field on the page; `Enter` saves, `Esc` cancels; a click in the field puts the cursor there), `p` forget the remembered password, after a question (the key is there only when one is remembered), `t` edit the text, `d` delete, `Enter` connect and run (with an application), `Esc` back.
 
 ### 13.5 The editor
 
@@ -380,7 +399,8 @@ Shows: name, every remote, whether it asks for a password, the remembered user n
 
 ### 13.6 Login and connecting
 
-- A profile that asks for a password opens the login page first: user name (filled with the remembered one), password (drawn as a `*` for each character, never the characters: D26), and "remember the user name" (on by default). `Enter` connects, `Esc` goes back. With the mouse: a click on a field gives it the focus and puts the cursor there (in the password too: its stars are as many as its characters), a click of the right button in a field opens its menu (§13.13), a click on "remember" changes it, and the buttons `[ Connect ]` (`[ Use ]` when the page was opened from the Network tab) and `[ Cancel ]` are `Enter` and `Esc`.
+- A profile that asks for a password, and whose password is not remembered, opens the login page first: user name (filled with the remembered one), password (drawn as a `*` for each character, never the characters: D26), and the two marks "remember the user name" and "remember the password" (both on by default: D27). `Enter` connects, `Esc` goes back. With the mark of the password on, the password is remembered when the connect worked (and the user name with it); with it off, a password that was remembered is forgotten then (§6.6). On a terminal that is too short for the page, the empty lines are left out, and then its first line: the fields, the marks and the buttons fit in five lines.
+- A profile whose password is remembered connects without the login page (D27). When the server refuses the remembered password, the login page opens, with the error, for another one. With the mouse: a click on a field gives it the focus and puts the cursor there (in the password too: its stars are as many as its characters), a click of the right button in a field opens its menu (§13.13), a click on a mark changes it, and the buttons `[ Connect ]` (`[ Use ]` when the page was opened from the Network tab) and `[ Cancel ]` are `Enter` and `Esc`.
 - The connecting page shows the profile's name and the seconds that have passed. `Esc`, or a click on `[ Cancel ]`, cancels the connecting and goes back.
 - When it fails: the error (§12.3) on the profiles page; a wrong password goes back to the login page with the user name kept.
 - When it succeeds: the time of use is saved, the application starts, and the run screen opens (§13.8).
@@ -408,7 +428,7 @@ While the application runs, and after it has ended until the user quits, the TUI
 ### 13.10 The Network tab
 
 - The list of the profiles, with the one in use marked, and above it one line that says what the application has now: the profile it uses, or that it has no network and why (connecting again, disconnected, login refused).
-- `Enter` on a profile, or a double click on it, switches to it (D20): a profile that asks for a password opens the login page first; while the new profile connects, the one in use stays in use, and `Esc` cancels. When it is connected, it replaces the one in use. When it fails, the error is shown and nothing changes. When the application has no network, `Enter` on a profile (also the one last used) connects it.
+- `Enter` on a profile, or a double click on it, switches to it (D20): a profile that asks for a password that is not remembered opens the login page first (and one whose remembered password is refused, after the refusal); while the new profile connects, the one in use stays in use, and `Esc` cancels. When it is connected, it replaces the one in use. When it fails, the error is shown and nothing changes. When the application has no network, `Enter` on a profile (also the one last used) connects it.
 - `x` disconnects, after a question: the application keeps running without network, and Tube does not connect again until a profile is chosen.
 - Adding, changing and deleting profiles is not done here: it is done before a profile is selected (§13.2 to §13.5).
 
@@ -452,7 +472,8 @@ What Tube promises, and where it is kept:
 | The names go to the VPN's DNS | §8.4 | a test resolves a name inside and sees the query on the TUN, to the configured server; with no server, the lookup fails |
 | The application cannot change the namespace's network | it runs in a nested user namespace with no capability over it (§8.5) | a test tries (`RTM_NEWROUTE`) from inside and is refused |
 | No root | nothing needs it; archtest rule 5 keeps `sudo` and helpers out | |
-| Keys and passwords stay private | modes 0700 and 0600 (§5); the password only in memory (D12); never in a log, an error or on the screen | tests of the modes; tests that a known secret appears in no log line and no error |
+| Keys and passwords stay private | modes 0700 and 0600 (§5); the password in memory, and in a file of mode 0600 only when the user has it remembered (§6.6); never in a log, an error, a snapshot or on the screen | tests of the modes; tests that a known secret appears in no log line and no error |
+| Firefox runs inside the VPN also when the user's Firefox is open | a profile of its own (§8.7) | a test of the arguments that a program called `firefox` gets through the real path; that Firefox then is a process of its own was seen by hand (Firefox 160) |
 | Hostile text cannot reach the terminal | `sanitize.Display` (§6.5); search domains checked (§7) | tests with escape sequences in names, remotes and pushed options |
 | A profile runs nothing | only `ovpn` parses it; script options are refused or disabled (§6.2) | a test adds a profile with `up` and sees that nothing ran |
 | The application's output cannot reach the user's terminal as it is | it is read from a pseudo-terminal and made into plain lines (§13.9) | a test writes random bytes and escape sequences and finds no control character in the lines |
