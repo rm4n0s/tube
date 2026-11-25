@@ -5,12 +5,16 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/rm4n0s/tube/internal/app"
 	"github.com/rm4n0s/tube/internal/core/sandbox"
+	"github.com/rm4n0s/tube/internal/core/storage"
 )
 
 const (
@@ -18,8 +22,14 @@ const (
 	program = "tube"
 	// statusOK is the exit status of a run that did what it was asked.
 	statusOK = 0
+	// statusUsage is the exit status of a mistake in the arguments (docs/SPEC.md §10).
+	statusUsage = 2
 	// statusFailed is the exit status of a failure of Tube itself (docs/SPEC.md §10).
-	statusFailed = 125
+	statusFailed = sandbox.StatusTubeFailed
+	// statusInterrupted is the exit status of a connect that the user cancelled.
+	statusInterrupted = 130
+	// noTUI is what Tube says without --profile until the TUI exists.
+	noTUI = "the TUI comes with milestone M5; use --profile <name>"
 )
 
 func main() {
@@ -27,22 +37,159 @@ func main() {
 	if sandbox.IsKeeper() {
 		os.Exit(sandbox.KeeperMain())
 	}
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+	os.Exit(run(context.Background(), os.Args[1:], os.LookupEnv, os.Stdout, os.Stderr))
 }
 
-// run is the program with its arguments and streams given, so that tests can call it. It
-// returns the exit status.
-func run(args []string, stdout, stderr io.Writer) int {
-	if len(args) == 1 && (args[0] == "--version" || args[0] == "-version") {
-		if _, err := fmt.Fprintln(stdout, program, app.Version()); err != nil {
-			return statusFailed // there is nowhere to tell: standard output is closed
+// cli is one run of the command line: where it writes, and how it finds its folders.
+type cli struct {
+	env            storage.Env
+	stdout, stderr io.Writer
+	// tty is the terminal that asks for a password.
+	tty string
+}
+
+// run is the program with its arguments, environment and streams given, so that tests can call
+// it. It returns the exit status. Standard output belongs to the application (and to --help and
+// --version); every message of Tube is one line on standard error that starts with "tube: ".
+func run(ctx context.Context, args []string, env storage.Env, stdout, stderr io.Writer) int {
+	c := cli{env: env, stdout: stdout, stderr: stderr, tty: ttyPath}
+	return c.run(ctx, args)
+}
+
+// say writes one line of Tube on standard error. When even that fails there is nowhere to tell.
+func (c cli) say(text string) {
+	_, _ = fmt.Fprintln(c.stderr, program+": "+text)
+}
+
+// fail tells the user about an error and returns the exit status for it.
+func (c cli) fail(err error) int {
+	c.say(app.Explain(err))
+	return app.ExitCode(err)
+}
+
+// run is run, with the cli.
+func (c cli) run(ctx context.Context, args []string) int {
+	f, err := parseFlags(args)
+	if err != nil {
+		c.say(app.Explain(err))
+		c.say("Try 'tube --help'.")
+		return statusUsage
+	}
+	switch {
+	case f.help:
+		if _, err := io.WriteString(c.stdout, usage); err != nil {
+			return statusFailed // standard output is closed: there is nowhere to tell
+		}
+		return statusOK
+	case f.version:
+		if _, err := fmt.Fprintln(c.stdout, program, app.Version()); err != nil {
+			return statusFailed
 		}
 		return statusOK
 	}
-	// TODO(step 3.2): the options of docs/SPEC.md §11 and --profile.
-	// TODO(step 4.2): the TUI.
-	if _, err := fmt.Fprintln(stderr, program+": not implemented yet"); err != nil {
+	// The application is looked for before anything else (docs/SPEC.md §8.5); App.Run finds it
+	// again.
+	if len(f.target) > 0 {
+		if _, err := sandbox.LookPath(f.target[0]); err != nil {
+			return c.fail(err)
+		}
+	}
+	if err := sandbox.Check(ctx); err != nil {
+		return c.fail(err)
+	}
+	opts := app.Options{Env: c.env, Argv: f.target, Lines: c.stderr}
+	if f.quiet {
+		opts.Lines = nil
+	}
+	a, err := app.Open(ctx, opts)
+	if err != nil {
+		return c.fail(err)
+	}
+	status := c.runApp(ctx, a, f)
+	if err := a.Close(); err != nil {
+		c.say(app.Explain(err))
+	}
+	return status
+}
+
+// runApp connects the profile of --profile and runs the application.
+func (c cli) runApp(ctx context.Context, a *app.App, f flags) int {
+	if f.profile == "" {
+		// TODO(step 5.2): the TUI.
+		c.say(noTUI)
 		return statusFailed
 	}
-	return statusFailed
+	id, needsPassword, username, err := a.FindProfile(ctx, f.profile)
+	if err != nil {
+		return c.fail(err)
+	}
+	var creds *app.Credentials
+	if needsPassword {
+		got, err := c.credentials(f.authFile, username)
+		if err != nil {
+			return c.fail(err)
+		}
+		creds = &got
+	}
+	// SIGINT, SIGTERM and SIGHUP cancel the connect. A script does not change the profile:
+	// the user name is not remembered.
+	connectCtx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	err = a.Connect(connectCtx, id, creds, false)
+	interrupted := connectCtx.Err() != nil && ctx.Err() == nil
+	stop()
+	if err != nil {
+		if interrupted {
+			return statusInterrupted
+		}
+		return c.fail(err)
+	}
+	status, err := c.runWithSignals(ctx, a)
+	if err != nil {
+		c.say(app.Explain(err))
+	}
+	return status
+}
+
+// credentials reads the user name and the password from the file of --auth-file, or asks for
+// them on the terminal.
+func (c cli) credentials(authFile, username string) (app.Credentials, error) {
+	if authFile != "" {
+		return readAuthFile(authFile)
+	}
+	tty, err := openTerminal(c.tty)
+	if err != nil {
+		return app.Credentials{}, err
+	}
+	creds, err := askCredentials(tty, username)
+	// The terminal was only read; the credentials are what matters.
+	_ = tty.Close()
+	return creds, err
+}
+
+// runWithSignals runs the application. While it runs, SIGINT and SIGQUIT are caught and dropped
+// (the terminal sends them to the application too) and SIGTERM and SIGHUP are passed on to it.
+// They are caught, never ignored: an ignored signal stays ignored in the application (trap 13).
+func (c cli) runWithSignals(ctx context.Context, a *app.App) (int, error) {
+	sigs := make(chan os.Signal, 4)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM, syscall.SIGHUP)
+	done := make(chan struct{})
+	passed := make(chan struct{})
+	go func() {
+		defer close(passed)
+		for {
+			select {
+			case sig := <-sigs:
+				if sig == syscall.SIGTERM || sig == syscall.SIGHUP {
+					a.Signal(sig.(syscall.Signal))
+				}
+			case <-done:
+				return
+			}
+		}
+	}()
+	status, err := a.Run(ctx)
+	signal.Stop(sigs)
+	close(done)
+	<-passed
+	return status, err
 }

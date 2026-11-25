@@ -67,8 +67,11 @@ type App struct {
 	// tunnel is connected and not given to a session yet; profile is its profile.
 	tunnel  vpn.Tunnel
 	profile profiles.Profile
-	// session runs the application.
+	// session runs the application; running is set while Run runs, and pending is a signal
+	// that came before the session could take it.
 	session *session.Session
+	running bool
+	pending syscall.Signal
 }
 
 // Open resolves and makes the folders, opens the log and the store.
@@ -227,6 +230,14 @@ func (a *App) Run(ctx context.Context) (int, error) {
 		return sandbox.ExitCodeOf(err), err
 	}
 	a.log.Info("run started", "profile", p.ID, "name", p.Name, "application", sanitize.Display(a.opts.Argv[0], maxNameInError))
+	a.mu.Lock()
+	a.running = true
+	a.mu.Unlock()
+	defer func() {
+		a.mu.Lock()
+		a.running = false
+		a.mu.Unlock()
+	}()
 	s, err := session.Start(ctx, session.Options{
 		Tunnel: tun, Dirs: a.dirs, Path: path, Argv: a.opts.Argv, ProfileName: p.Name, DNS: p.DNS,
 		Logger: a.log, Lines: a.opts.Lines, Clock: a.opts.Clock,
@@ -238,7 +249,11 @@ func (a *App) Run(ctx context.Context) (int, error) {
 	}
 	a.mu.Lock()
 	a.session = s
+	pending := a.pending
 	a.mu.Unlock()
+	if pending != 0 {
+		s.Signal(pending)
+	}
 	status, err := s.Wait()
 	if err != nil {
 		a.log.Error("run failed", "err", err, "profile", p.ID)
@@ -255,10 +270,14 @@ func (a *App) closeTunnelOf(tun vpn.Tunnel) {
 	}
 }
 
-// Signal passes a signal to the application, when one runs.
+// Signal passes a signal to the application, when one runs. A signal that comes while the
+// application is being started is passed on as soon as it has started.
 func (a *App) Signal(sig syscall.Signal) {
 	a.mu.Lock()
 	s := a.session
+	if s == nil && a.running {
+		a.pending = sig
+	}
 	a.mu.Unlock()
 	if s != nil {
 		s.Signal(sig)

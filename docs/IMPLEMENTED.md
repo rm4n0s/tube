@@ -169,3 +169,17 @@ The log of the finished steps of `docs/IMPLEMENTATION.md`, in order (its rule 11
   - `ProblemSyntax` without a line says `The profile cannot be read: a mistake.`; `sandbox.TagAppNotFound` (which has no name) says `The program was not found.`
   - The profiles `HOME` and `home` of `TestFindProfile` are made by writing the name into `meta.json` by hand: the store refuses two names that differ only by case.
   - `Run` returns an exit status with its error too (125, or 127/126 for an application that is not found or cannot be executed), so that the caller does not need `ExitCode` for these; `TestConnectNeedsCredentials` also checks that a password given to a server that does not answer stays out of the log, and that a failed connect changes nothing of the profile.
+
+## Step 3.2: `tube --profile`
+- Date: 2026-11-25
+- What was done: the command line of SPEC §11 (`flags.go`, `usage.go`); the credentials from `--auth-file` (mode 0600 or narrower, two lines) or asked on `/dev/tty` with the echo off (`password.go`); `run` in `main.go`: the options, the early `LookPath`, `sandbox.Check`, `app.Open`, `--profile` (find, credentials, a connect that SIGINT, SIGTERM and SIGHUP cancel with status 130), and the run, during which SIGINT and SIGQUIT are caught and dropped and SIGTERM and SIGHUP are passed on to the application. Every message of Tube is one line on standard error that starts with `tube: `. `vpntest.StartDNS`. `docs/MANUAL-CHECKS.md`.
+- Checks: `scripts/checks.sh` passed, with the tests against the real server: the built `tube` pings through a real OpenVPN server, ends with the application's status, finds names through the VPN with `getent`, refuses a wrong password with the sentence of `AuthFailed`, ends with 127 before connecting when the application is not there, and ends with 143 on SIGTERM with nothing left.
+- Proofs: none
+- Manual checks: pending, see docs/MANUAL-CHECKS.md
+- Differences from the plan or the spec:
+  - The echo of the terminal is switched off before `Password: ` is written, so that nothing typed after the prompt is ever echoed; the test types each answer only after its prompt is shown, as a user does.
+  - More Tags, each tested: `TubeTerminalWriteFailed` (a prompt cannot be written) and `TubeTerminalLineTooLong` (more than 4 KiB without a new line); `TubeTerminalReadFailed` is a read that fails otherwise. `openTerminal` takes the path of the terminal, so that `TubeNoTerminal` is tested.
+  - The hint after a mistake in the arguments is a line of Tube too: `tube: Try 'tube --help'.`
+  - The end-to-end tests are subtests of one `TestEndToEnd`, which builds the binary once into its temporary folder; the last subtest checks that no process with that folder in its command line is left.
+  - `App.Signal` keeps a signal that comes while the application is being started (after the line `connected`, before the App holds the session) and passes it on as soon as the session exists: the end-to-end test of SIGTERM found the gap.
+  - The manual check of this step needs a profile in the store, which only the TUI (step 5.3) can add for a user.
