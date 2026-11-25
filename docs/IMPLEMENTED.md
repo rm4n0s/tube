@@ -395,3 +395,12 @@ The log of the finished steps of `docs/IMPLEMENTATION.md`, in order (its rule 11
 - Manual checks: pending, see docs/MANUAL-CHECKS.md ("Copying text from the TUI"). Not seen by the session: the real `wl-copy` and the user's terminal (a check must not write the user's clipboard).
 - Differences from the spec before the change: §13.12 and §17 said that text is selected only by the terminal, with `Shift`; a drag now selects and copies (§13.14), and `Shift` still works. `internal/tui` runs a third kind of program, the one that takes the clipboard (§4.2 rule 5).
 
+## Change outside the steps: The logo
+- Date: 2026-11-25
+- Why: the user, 2026-11-25: "create a logo with a cat that shoots paper bullets by blowing a tube". Done on the branch `feat/logo`, not as a step of `docs/IMPLEMENTATION.md`.
+- What was done: `docs/logo.svg`, drawn by hand as an SVG of 512x512: an orange cat with its eyes shut tight blows through a yellow tube that a paw holds, and three balls of crumpled paper fly out of it, on a violet rounded square (the violet of the TUI). `README.md` shows it at the top. No code changed.
+- Checks: the SVG was rendered with `rsvg-convert` at 512 and at 64 pixels and looked at; `go test ./internal/archtest/...` passed. The full `scripts/checks.sh` was not run again: no Go file changed.
+- Proofs: none
+- Manual checks: none
+- Differences from the plan or the spec: none
+

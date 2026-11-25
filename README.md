@@ -1,5 +1,9 @@
 # Tube
 
+<p align="center">
+  <img src="docs/logo.svg" width="160" alt="The logo of Tube: a cat blows paper bullets through a tube">
+</p>
+
 Tube runs one application through a VPN, and only that application. Every other program on the
 machine keeps using the machine's own network.
 
