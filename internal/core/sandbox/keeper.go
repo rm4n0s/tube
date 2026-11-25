@@ -10,6 +10,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -69,8 +71,9 @@ type keeper struct {
 	conn *net.UnixConn
 	// sendMu keeps the answers of the loop and the end of the application apart.
 	sendMu sync.Mutex
-	// nl is opened by the first configure and kept.
-	nl *netlink.Conn
+	// nl is opened by the first configure and kept; dns are the files of the names.
+	nl  *netlink.Conn
+	dns *dnsFiles
 	// app is the application once it started; appEnded gets its state when it ends (nil when
 	// it could not be waited for).
 	app      *exec.Cmd
@@ -173,7 +176,7 @@ func (k *keeper) handle(m message) error {
 	switch m.Type {
 	case msgConfigure:
 		answer.Type = msgConfigured
-		err = k.configure(m)
+		answer.Warnings, err = k.configure(m)
 	case msgRun:
 		answer.Type = msgStarted
 		answer.PID, err = k.startApp(m)
@@ -186,21 +189,25 @@ func (k *keeper) handle(m message) error {
 	return k.send(answer)
 }
 
-// configure sets the network of the namespace to the one of the message.
-func (k *keeper) configure(m message) error {
+// configure sets the network and the names of the namespace to the ones of the message, and
+// returns the warnings about the names.
+func (k *keeper) configure(m message) ([]string, error) {
 	n, err := parseNetwork(m.Network)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if k.nl == nil {
 		nl, err := netlink.Open()
 		if err != nil {
-			return err
+			return nil, err
 		}
 		k.nl = nl
+		k.dns = newDNSFiles()
 	}
-	// TODO(step 2.4): the names.
-	return configureNetwork(k.nl, n)
+	if err := configureNetwork(k.nl, n); err != nil {
+		return nil, err
+	}
+	return k.dns.apply(n.dns, m.Network.Search)
 }
 
 // startApp starts the application that the keeper was started with, in a nested user
@@ -215,6 +222,7 @@ func (k *keeper) startApp(m message) (int, error) {
 	}
 	cmd := exec.Command(os.Args[1])
 	cmd.Args = os.Args[2:]
+	cmd.Env = withoutKeeperVars(os.Environ())
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Cloneflags:                 syscall.CLONE_NEWUSER,
@@ -240,6 +248,11 @@ func (k *keeper) startApp(m message) (int, error) {
 		k.appEnded <- cmd.ProcessState
 	}()
 	return cmd.Process.Pid, nil
+}
+
+// withoutKeeperVars is the environment without the variables that only the keeper reads.
+func withoutKeeperVars(env []string) []string {
+	return slices.DeleteFunc(slices.Clone(env), func(v string) bool { return strings.HasPrefix(v, keeperVarPrefix) })
 }
 
 // exited tells Tube how the application ended, and returns the keeper's exit status.

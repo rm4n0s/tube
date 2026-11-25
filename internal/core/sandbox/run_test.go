@@ -62,6 +62,12 @@ func (r running) errors() string {
 // ends. The application's output goes to files of the test.
 func startSandbox(t *testing.T, path string, argv []string, env ...string) running {
 	t.Helper()
+	return startSandboxWith(t, nil, path, argv, env...)
+}
+
+// startSandboxWith is startSandbox, with options that change changes before the start.
+func startSandboxWith(t *testing.T, change func(*Options), path string, argv []string, env ...string) running {
+	t.Helper()
 	nstest.Require(t)
 	dir := t.TempDir()
 	r := running{stdout: filepath.Join(dir, "stdout"), stderr: filepath.Join(dir, "stderr")}
@@ -75,7 +81,15 @@ func startSandbox(t *testing.T, path string, argv []string, env ...string) runni
 		files[i] = f
 	}
 	env = append(append(os.Environ(), "TUBE=1", "TUBE_PROFILE=test", "MOZ_NO_REMOTE=1"), env...)
-	s, err := Start(context.Background(), Options{Path: path, Argv: argv, Env: env, Stdout: files[0], Stderr: files[1], KillDelay: 500 * time.Millisecond})
+	tmp := filepath.Join(dir, "keeper")
+	if err := os.Mkdir(tmp, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	opts := Options{Path: path, Argv: argv, Env: env, Stdout: files[0], Stderr: files[1], KillDelay: 500 * time.Millisecond, TempDir: tmp}
+	if change != nil {
+		change(&opts)
+	}
+	s, err := Start(context.Background(), opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,11 +102,17 @@ func startSandbox(t *testing.T, path string, argv []string, env ...string) runni
 // startProbe starts a sandbox whose application is the test binary in the role of the probe.
 func startProbe(t *testing.T, probe string, args ...string) running {
 	t.Helper()
+	return startProbeWith(t, nil, probe, args...)
+}
+
+// startProbeWith is startProbe, with options that change changes before the start.
+func startProbeWith(t *testing.T, change func(*Options), probe string, args ...string) running {
+	t.Helper()
 	exe, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
 	}
-	return startSandbox(t, exe, append([]string{"probe"}, args...), sandboxtest.ProbeEnv(probe))
+	return startSandboxWith(t, change, exe, append([]string{"probe"}, args...), sandboxtest.ProbeEnv(probe))
 }
 
 // lookPath finds a program for a test, and skips the test when it is not installed.
@@ -105,12 +125,14 @@ func lookPath(t *testing.T, name string) string {
 	return path
 }
 
-// configure configures the sandbox and fails the test when it cannot.
-func (r running) configure(t *testing.T, n vpn.Network) {
+// configure configures the sandbox, fails the test when it cannot, and returns the warnings.
+func (r running) configure(t *testing.T, n vpn.Network, dns ...netip.Addr) []string {
 	t.Helper()
-	if err := r.s.Configure(context.Background(), n, nil); err != nil {
+	warnings, err := r.s.Configure(context.Background(), n, dns)
+	if err != nil {
 		t.Fatal(err)
 	}
+	return warnings
 }
 
 // run starts the application and waits for its end.
@@ -394,7 +416,8 @@ func TestConfigureRefusesBadNetworks(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := start(t, Options{})
-			meta := errtest.Route(t, s.configure(context.Background(), tt.n), "Sandbox.configure.SandboxConfigureFailed")
+			_, err := s.configure(context.Background(), tt.n)
+			meta := errtest.Route(t, err, "Sandbox.configure.SandboxConfigureFailed")
 			keeperRoute(t, meta, "keeper.configure->parseNetwork.KeeperNetworkInvalid")
 		})
 	}
@@ -427,7 +450,7 @@ func TestCancelled(t *testing.T) {
 	s := start(t, Options{})
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	err := s.Configure(ctx, network4, nil)
+	_, err := s.Configure(ctx, network4, nil)
 	errtest.Route(t, err, "Sandbox.Configure->Sandbox.configure->Sandbox.exchange.SandboxCancelled")
 }
 
@@ -444,7 +467,7 @@ func TestALateAnswerIsDropped(t *testing.T) {
 	s := start(t, Options{})
 	// An answer to request 99, which nobody sent, comes before the answer to the next one.
 	s.replies <- reply{message{Type: msgConfigured, Seq: 99}, -1}
-	if err := s.Configure(context.Background(), network4, nil); err != nil {
+	if _, err := s.Configure(context.Background(), network4, nil); err != nil {
 		t.Fatal(err)
 	}
 }

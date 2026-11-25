@@ -73,6 +73,12 @@ type Options struct {
 	StepTimeout time.Duration
 	// KillDelay is the time between SIGTERM and SIGKILL to the application; 0 is 5 seconds.
 	KillDelay time.Duration
+	// TempDir is a folder of Tube's for the keeper's files (a resolv.conf that is mounted
+	// over the machine's); "" when there is none, which works only on a machine whose
+	// resolv.conf leads into a folder that the keeper covers (docs/SPEC.md §8.4).
+	TempDir string
+	// resolvConf replaces /etc/resolv.conf for the keeper; tests set it.
+	resolvConf string
 	// startCmd starts the keeper; nil is (*exec.Cmd).Start. Tests replace it.
 	startCmd func(*exec.Cmd) error
 }
@@ -176,7 +182,7 @@ func keeperCommand(opts Options, child *os.File) *exec.Cmd {
 		cmd.Args = append(cmd.Args, opts.Path)
 		cmd.Args = append(cmd.Args, opts.Argv...)
 	}
-	cmd.Env = opts.Env
+	cmd.Env = keeperEnv(opts)
 	cmd.Dir = opts.Dir
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	if opts.Stdin != nil {
@@ -196,6 +202,23 @@ func keeperCommand(opts Options, child *os.File) *exec.Cmd {
 		GidMappingsEnableSetgroups: false,
 	}
 	return cmd
+}
+
+// keeperEnv is the keeper's environment: the one of the options, or Tube's, without any
+// variable that only the keeper reads, and with the ones that Start sets.
+func keeperEnv(opts Options) []string {
+	env := opts.Env
+	if env == nil {
+		env = os.Environ()
+	}
+	env = withoutKeeperVars(env)
+	if opts.TempDir != "" {
+		env = append(env, keeperTmpVar+"="+opts.TempDir)
+	}
+	if opts.resolvConf != "" {
+		env = append(env, keeperResolvVar+"="+opts.resolvConf)
+	}
+	return env
 }
 
 // reply is an answer of the keeper and the descriptor that came with it, or -1.
@@ -318,8 +341,8 @@ func (s *Sandbox) awaitReady(ctx context.Context) error {
 
 // Configure sets, or sets again, the network of the namespace: the tunnel's addresses and MTU,
 // the default routes, and the DNS servers (dns when it is not empty, else the ones of the
-// network) with the network's search domains.
-func (s *Sandbox) Configure(ctx context.Context, n vpn.Network, dns []netip.Addr) error {
+// network) with the network's search domains. The warnings say why names will not be found.
+func (s *Sandbox) Configure(ctx context.Context, n vpn.Network, dns []netip.Addr) (warnings []string, err error) {
 	nm := networkMessage{MTU: n.MTU, Search: n.SearchDomains}
 	for _, p := range n.Addrs {
 		nm.Addrs = append(nm.Addrs, p.String())
@@ -334,15 +357,15 @@ func (s *Sandbox) Configure(ctx context.Context, n vpn.Network, dns []netip.Addr
 }
 
 // configure sends the network as the keeper gets it.
-func (s *Sandbox) configure(ctx context.Context, nm networkMessage) error {
+func (s *Sandbox) configure(ctx context.Context, nm networkMessage) ([]string, error) {
 	m, _, err := s.exchange(ctx, &message{Type: msgConfigure, Network: &nm}, msgConfigured)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if m.Type == msgFailed {
-		return errors.New(TagConfigureFailed, "the network of the namespace cannot be set", keeperMeta(m)...)
+		return nil, errors.New(TagConfigureFailed, "the network of the namespace cannot be set", keeperMeta(m)...)
 	}
-	return nil
+	return m.Warnings, nil
 }
 
 // Run starts the application, as the user who runs Tube, and returns when it has started.

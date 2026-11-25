@@ -78,3 +78,30 @@ func TestNotPackets(t *testing.T) {
 		}
 	}
 }
+
+func TestUDP4(t *testing.T) {
+	src := netip.MustParseAddrPort("10.9.0.2:40000")
+	dst := netip.MustParseAddrPort("10.9.0.1:53")
+	packet := UDP4(src, dst, []byte("query"))
+	if Checksum(packet[:20]) != 0 {
+		t.Error("the IPv4 header's checksum is wrong")
+	}
+	gotSrc, gotDst, payload, ok := ParseUDP4(packet)
+	if !ok || gotSrc != src || gotDst != dst || string(payload) != "query" {
+		t.Errorf("ParseUDP4 = %v, %v, %q, %v", gotSrc, gotDst, payload, ok)
+	}
+	cut := func(n int) []byte { return packet[:n] }
+	wrongLength := append([]byte(nil), packet...)
+	wrongLength[25] = 200 // the UDP length is more than there is
+	for name, p := range map[string][]byte{
+		"an echo request":       EchoRequest4(src.Addr(), dst.Addr(), 1, 1),
+		"cut in the IP header":  cut(10),
+		"cut in the UDP header": cut(24),
+		"a UDP length too long": wrongLength,
+		"nothing":               nil,
+	} {
+		if _, _, _, ok := ParseUDP4(p); ok {
+			t.Errorf("%s is read as UDP", name)
+		}
+	}
+}

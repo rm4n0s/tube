@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 
 // Package packettest builds and reads IP packets by hand, for the tests that play a VPN or a
-// server: ICMP echo requests and replies, over IPv4 and IPv6.
+// server: ICMP echo requests and replies, over IPv4 and IPv6, and UDP datagrams over IPv4.
 package packettest
 
 import (
@@ -208,4 +208,42 @@ func Dst(packet []byte) netip.Addr {
 		return netip.AddrFrom16([16]byte(packet[24:40]))
 	}
 	return netip.Addr{}
+}
+
+// protoUDP is the protocol number of UDP.
+const protoUDP = 17
+
+// udpHeaderLen is the length of a UDP header.
+const udpHeaderLen = 8
+
+// UDP4 builds an IPv4 packet with a UDP datagram from src to dst. Its UDP checksum is 0, which
+// IPv4 allows (no checksum).
+func UDP4(src, dst netip.AddrPort, payload []byte) []byte {
+	udp := make([]byte, udpHeaderLen+len(payload))
+	binary.BigEndian.PutUint16(udp[0:], src.Port())
+	binary.BigEndian.PutUint16(udp[2:], dst.Port())
+	binary.BigEndian.PutUint16(udp[4:], uint16(len(udp)))
+	copy(udp[udpHeaderLen:], payload)
+	return append(ipv4(src.Addr(), dst.Addr(), protoUDP, len(udp)), udp...)
+}
+
+// ParseUDP4 reads an IPv4 packet that carries a UDP datagram: its source, its destination and
+// its payload. ok is false for any other packet, or one cut short.
+func ParseUDP4(packet []byte) (src, dst netip.AddrPort, payload []byte, ok bool) {
+	if Version(packet) != 4 || packet[9] != protoUDP {
+		return src, dst, nil, false
+	}
+	headerLen := int(packet[0]&0x0f) * 4
+	total := int(binary.BigEndian.Uint16(packet[2:]))
+	if headerLen < ipv4HeaderLen || total > len(packet) || total < headerLen+udpHeaderLen {
+		return src, dst, nil, false
+	}
+	udp := packet[headerLen:total]
+	length := int(binary.BigEndian.Uint16(udp[4:]))
+	if length < udpHeaderLen || length > len(udp) {
+		return src, dst, nil, false
+	}
+	src = netip.AddrPortFrom(Src(packet), binary.BigEndian.Uint16(udp[0:]))
+	dst = netip.AddrPortFrom(Dst(packet), binary.BigEndian.Uint16(udp[2:]))
+	return src, dst, udp[udpHeaderLen:length], true
 }

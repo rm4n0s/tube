@@ -109,3 +109,16 @@ The log of the finished steps of `docs/IMPLEMENTATION.md`, in order (its rule 11
   - `writeSetting` opens the existing file of the setting: `os.WriteFile` would have created a file that does not exist, and the test of a missing file found it.
   - Until step 2.5, the keeper kills the application with SIGKILL when the socket closes (step 2.5 makes it SIGTERM, then SIGKILL after the kill delay): no application is left behind in the meantime.
   - `packettest` had what this step needed already (step 1.4). Tests that the plan does not name: `TestRunWithoutAnApplication`, `TestRunRefusesBadIDs`, `TestAppCannotStart` (the first part of step 2.5's tests of "not found" and "not executable", which the new Tags needed), `TestWriteSetting`, `TestCancelled`, `TestKeeperLost`, `TestALateAnswerIsDropped`.
+
+## Step 2.4: The names
+- Date: 2026-11-25
+- What was done: `ResolvConf` (at most 3 servers, 6 valid search domains, `options edns0`, a comment when there is no server); the keeper's `dnsFiles`, which on the first `configure` follows `/etc/resolv.conf` by hand, covers `/run/systemd/resolve`, `/run/nscd`, `/var/run/nscd` and `/run/avahi-daemon` with an empty `tmpfs`, and on every `configure` writes the file into the covered folder or into a file of the keeper's folder that is bind-mounted over it (rewritten in place later); `Configure` returns the warnings. `dnstest` (`Query`, `Question`, `Answer`), `packettest.UDP4` and `ParseUDP4`, `Peer.AnswerDNS`, and the probes `lookup` and `files`.
+- Checks: `scripts/checks.sh` passed, with the tests against the real server. `getent hosts` inside the namespace gets its answer from the peer, through the device.
+- Proofs: none
+- Manual checks: none
+- Differences from the plan or the spec:
+  - `Options.TempDir` reaches the keeper as `TUBE_KEEPER_TMP`. `Start` removes every `TUBE_KEEPER_*` variable from the environment it is given, and the keeper removes them from the application's: the user's environment cannot steer the keeper, and the application does not see them.
+  - An unexported option, `resolvConf`, gives the keeper another file in place of `/etc/resolv.conf` (`TUBE_KEEPER_RESOLV`), so that a machine with a plain file is tested here too (`TestResolvConfMountedOverAFile`), and a machine with none (`TestNoResolvConf`).
+  - More Tags, each tested: `KeeperResolvLinkFailed` (a loop of links), `KeeperNoTempDir` (a file must be mounted and `Options.TempDir` is empty).
+  - `writeResolv` writes with `os.WriteFile`, which truncates and writes the same file, so the bind-mounted file keeps its inode (trap 16).
+  - The tests of `dnstest` compare the bytes with ones written by hand: `golang.org/x/net/dns/dnsmessage` is not an allowed dependency.

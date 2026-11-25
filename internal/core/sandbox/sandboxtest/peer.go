@@ -7,11 +7,13 @@
 package sandboxtest
 
 import (
+	"net/netip"
 	"os"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/rm4n0s/tube/internal/core/dnstest"
 	"github.com/rm4n0s/tube/internal/core/packettest"
 )
 
@@ -23,6 +25,8 @@ type Peer struct {
 	mu      sync.Mutex
 	packets [][]byte
 	pings   bool
+	// names are the names the peer answers DNS queries for, when it is not nil.
+	names map[string]netip.Addr
 	// writeErr is the first failure to answer, reported when the test ends.
 	writeErr error
 }
@@ -87,8 +91,33 @@ func (p *Peer) answer(packet []byte) []byte {
 		return packettest.EchoReply4(packet)
 	case p.pings && packettest.IsEchoRequest6(packet):
 		return packettest.EchoReply6(packet)
+	case p.names != nil:
+		return p.answerDNS(packet)
 	}
 	return nil
+}
+
+// answerDNS answers a DNS query over UDP and IPv4, to port 53 of any address, or returns nil
+// for another packet. It is called with mu held.
+func (p *Peer) answerDNS(packet []byte) []byte {
+	src, dst, query, ok := packettest.ParseUDP4(packet)
+	if !ok || dst.Port() != 53 {
+		return nil
+	}
+	name, _, _, ok := dnstest.Question(query)
+	if !ok {
+		return nil
+	}
+	addr, found := p.names[name]
+	return packettest.UDP4(dst, src, dnstest.Answer(query, addr, found))
+}
+
+// AnswerDNS makes the peer answer DNS queries over UDP and IPv4, sent to port 53 of any
+// address: a name of names gets its address, another name NXDOMAIN.
+func (p *Peer) AnswerDNS(names map[string]netip.Addr) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.names = names
 }
 
 // AnswerPings makes the peer answer echo requests of IPv4 and IPv6, or stop answering them.

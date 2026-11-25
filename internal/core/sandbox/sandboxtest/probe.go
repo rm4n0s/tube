@@ -5,10 +5,15 @@
 package sandboxtest
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
+	"slices"
+	"strings"
 	"syscall"
+	"time"
 
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/tube/internal/core/netlink"
@@ -28,6 +33,8 @@ func HandleProbe() {
 	}
 	probes := map[string]func(args []string) error{
 		"report": report,
+		"lookup": lookup,
+		"files":  files,
 	}
 	probe, ok := probes[name]
 	if !ok {
@@ -115,4 +122,66 @@ func report([]string) error {
 		r.Routes = append(r.Routes, ReportRoute{Family: rt.Family, Dst: rt.Dst.String(), Out: names[rt.OutIndex]})
 	}
 	return json.NewEncoder(os.Stdout).Encode(r)
+}
+
+// lookup resolves the name of its first argument with Go's resolver and prints the addresses,
+// sorted and one on each line, or "error: " and the error.
+func lookup(args []string) error {
+	if len(args) != 1 {
+		fmt.Fprintf(os.Stderr, "sandboxtest: lookup takes one name, not %q\n", args)
+		os.Exit(2)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	addrs, err := (&net.Resolver{PreferGo: true}).LookupHost(ctx, args[0])
+	if err != nil {
+		fmt.Printf("error: %v\n", err)
+		return nil
+	}
+	slices.Sort(addrs)
+	fmt.Println(strings.Join(addrs, "\n"))
+	return nil
+}
+
+// CoveredDirs are the folders that the probe files lists, the ones the keeper covers.
+var CoveredDirs = []string{"/run/systemd/resolve", "/run/nscd", "/var/run/nscd", "/run/avahi-daemon"}
+
+// Files is what the probe files prints, as one JSON object.
+type Files struct {
+	// Resolv is the content of each file the probe was given (/etc/resolv.conf when it was
+	// given none), or "error: " and why it cannot be read.
+	Resolv map[string]string `json:"resolv"`
+	// Dirs are the names in each of CoveredDirs that exists.
+	Dirs map[string][]string `json:"dirs"`
+}
+
+// files prints what the application sees of the files of the names.
+func files(args []string) error {
+	if len(args) == 0 {
+		args = []string{"/etc/resolv.conf"}
+	}
+	f := Files{Resolv: map[string]string{}, Dirs: map[string][]string{}}
+	for _, path := range args {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			f.Resolv[path] = "error: " + err.Error()
+			continue
+		}
+		f.Resolv[path] = string(data)
+	}
+	for _, dir := range CoveredDirs {
+		entries, err := os.ReadDir(dir)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		names := []string{}
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		f.Dirs[dir] = names
+	}
+	return json.NewEncoder(os.Stdout).Encode(f)
 }
