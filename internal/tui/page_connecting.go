@@ -30,6 +30,8 @@ type connecting struct {
 	cancelling bool
 	// login is the login page that the connect came from, or nil.
 	login *loginPage
+	// starting says that the connect worked and the application is being started.
+	starting bool
 }
 
 // connect opens the connecting page and returns the command that connects. The credentials
@@ -47,7 +49,7 @@ func (m Model) connect(id, name string, creds *app.Credentials, remember bool, l
 
 // connectingKey handles a key on the connecting page: esc cancels.
 func (m Model) connectingKey(name string) Model {
-	if name != "esc" || m.conn.cancelling {
+	if name != "esc" || m.conn.cancelling || m.conn.starting {
 		return m
 	}
 	c := *m.conn
@@ -64,6 +66,13 @@ func (m Model) connected(msg connectedMsg) (Model, tea.Cmd) {
 		return m, nil
 	}
 	c.cancel()
+	if msg.err == nil && !c.cancelling {
+		// The password lives no longer than the connect.
+		s := *c
+		s.starting, s.login = true, nil
+		m.conn, m.login = &s, nil
+		return m, m.start()
+	}
 	m.conn = nil
 	login := c.login
 	if login != nil {
@@ -89,13 +98,11 @@ func (m Model) connected(msg connectedMsg) (Model, tea.Cmd) {
 		m.page, m.login = pageLogin, login
 		m.setError(msg.err)
 		return m, nil
-	case msg.err != nil:
+	default:
 		m.page, m.prof = pageProfiles, nil
 		m.setError(msg.err)
 		return m, m.readSnapshot()
 	}
-	m.result.Run = true
-	return m, tea.Quit
 }
 
 // connectingBody is the connecting page.
@@ -103,7 +110,10 @@ func (m Model) connectingBody() []string {
 	c := m.conn
 	seconds := max(int(m.now.Sub(c.started)/time.Second), 0)
 	text := "Connecting to " + c.name + "…  " + strconv.Itoa(seconds) + " s"
-	if c.cancelling {
+	switch {
+	case c.starting:
+		text = "Connected to " + c.name + ". Starting the application…"
+	case c.cancelling:
 		text = cancelling
 	}
 	return []string{"", "  " + text, "", "  " + m.styles.dim.Render(escCancels)}

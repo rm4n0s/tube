@@ -31,6 +31,10 @@ func (m Model) View() tea.View {
 		v.SetContent(tooSmall)
 		return v
 	}
+	if m.page == pageRun && m.run != nil {
+		v.SetContent(m.runView())
+		return v
+	}
 	lines := make([]string, 0, m.height)
 	lines = append(lines, fit(m.title(), m.width), m.rule())
 	body := m.body()
@@ -51,6 +55,9 @@ func (m Model) View() tea.View {
 
 // title is the first line: Tube and what will happen.
 func (m Model) title() string {
+	if m.run != nil {
+		return m.runHeader()
+	}
 	what := "profiles"
 	if len(m.snap.Target) > 0 {
 		what = "select a profile to run " + strings.Join(m.snap.Target, " ")
@@ -65,6 +72,9 @@ func (m Model) rule() string { return m.styles.dim.Render(strings.Repeat("─", 
 func (m Model) messageLine() string {
 	if m.isError {
 		return m.styles.err.Render(clean(m.message))
+	}
+	if m.message == "" {
+		return m.runNotice()
 	}
 	return clean(m.message)
 }

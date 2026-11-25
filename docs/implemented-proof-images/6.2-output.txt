@@ -1,0 +1,30 @@
+Tube   ping through test   connected 00:00:01   ↓ 0 B/s  ↑ 0 B/s
+Status  [Output]
+────────────────────────────────────────────────────────────────────────────────────────────────────
+PING 10.8.0.1 (10.8.0.1) 56(84) bytes of data.
+64 bytes from 10.8.0.1: icmp_seq=1 ttl=64 time=0.300 ms
+64 bytes from 10.8.0.1: icmp_seq=2 ttl=64 time=0.696 ms
+64 bytes from 10.8.0.1: icmp_seq=3 ttl=64 time=0.660 ms
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+keys go to ping · tab: next tab · pgup pgdn: scroll

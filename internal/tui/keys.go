@@ -13,6 +13,10 @@ const (
 	pageProfile
 	pageLogin
 	pageConnecting
+	pageRun
+	// pageRunStatus and pageRunOutput are the tabs of the run screen.
+	pageRunStatus
+	pageRunOutput
 	// pageQuestion and pageField are not pages: their keys are the ones of an open question,
 	// and of a field open on a profile's page.
 	pageQuestion
@@ -53,6 +57,11 @@ func bindings(withTarget bool) []pageBindings {
 			{"tab ↑↓", "field"}, {"space", "remember"}, {"enter", "connect"}, {"esc", "back"},
 		}},
 		{"Connecting", pageConnecting, []binding{{"esc", "cancel"}}},
+		{"Status", pageRunStatus, []binding{{"tab shift+tab", "tabs"}, {"q", "quit"}, {"?", "keys"}}},
+		{"Output", pageRunOutput, []binding{
+			{"tab shift+tab", "tabs"}, {"pgup pgdn", "scroll"}, {"home", "oldest"}, {"end", "follow"},
+			{"other keys", "go to the application"},
+		}},
 		{"Field", pageField, []binding{{"enter", "save"}, {"esc", "cancel"}}},
 		{"Question", pageQuestion, []binding{{"y", "yes"}, {"n esc enter", "no"}}},
 		{"Keys", pageHelp, []binding{{"any key", "close"}}},

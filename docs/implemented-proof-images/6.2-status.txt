@@ -1,0 +1,30 @@
+Tube   ping through test   connected 00:00:00   ↓ 0 B/s  ↑ 0 B/s
+[Status]  Output
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Application   ping, running
+VPN           test, connected for 00:00:00
+Address       10.8.0.2/24
+DNS servers   -
+MTU           1500
+
+Received      168 B    2 packets   0 B/s
+Sent          168 B    2 packets   0 B/s
+Dropped       0 packets
+
+03:58:47  the VPN gave no DNS server: names will not be found; set DNS servers for the profile
+03:58:47  connected to test; running ping
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+tab shift+tab tabs   q quit   ? keys

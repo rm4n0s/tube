@@ -32,10 +32,11 @@ type (
 	doneMsg struct{ err error }
 )
 
-// Result is what the user chose in the TUI.
+// Result is what the TUI did.
 type Result struct {
-	// Run says that the application is to be run (step 5.5).
-	Run bool
+	// Started says that the application was started (App.Start worked): cmd/tube then calls
+	// App.Finish for its exit status.
+	Started bool
 }
 
 // Model is the TUI's model.
@@ -61,6 +62,10 @@ type Model struct {
 	// login and conn are the states of the login and the connecting pages.
 	login *loginPage
 	conn  *connecting
+	// run is the state of the run screen, once the application was started.
+	run *runScreen
+	// helpBack is the page that the help page goes back to.
+	helpBack page
 	// ask is the open question; it gets every key.
 	ask *asking
 	// message is the line above the keys; isError draws it as an error.
@@ -114,12 +119,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
+		if m.run != nil {
+			return m, tea.Batch(m.resizeOutput(), m.readRun())
+		}
 	case changedMsg:
+		if m.run != nil {
+			return m, tea.Batch(m.readSnapshot(), m.readRun())
+		}
 		return m, m.readSnapshot()
 	case snapshotMsg:
 		m.takeSnapshot(msg)
 	case tickMsg:
 		m.now = m.clock.Now()
+		if m.run != nil {
+			return m, m.readRun()
+		}
 	case doneMsg:
 		m.setError(msg.err)
 	case addedMsg:
@@ -148,6 +162,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.editEnded(msg)
 	case connectedMsg:
 		return m.connected(msg)
+	case startedMsg:
+		return m.started(msg)
+	case runMsg:
+		return m.ran(msg)
 	case tea.PasteMsg:
 		switch {
 		case m.ask != nil:
@@ -157,6 +175,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m = m.profilePaste(msg.Content)
 		case m.page == pageLogin:
 			m = m.loginPaste(msg.Content)
+		case m.page == pageRun && m.run.tab == tabOutput && !m.run.ended():
+			return m, m.input([]byte(msg.Content))
 		}
 	case tea.KeyPressMsg:
 		return m.key(msg)
@@ -253,7 +273,7 @@ func (m *Model) scroll() {
 func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	m.message, m.isError = "", false
 	name := msg.String()
-	if name == "ctrl+c" {
+	if name == "ctrl+c" && m.page != pageRun {
 		if m.conn != nil {
 			m.conn.cancel()
 		}
@@ -272,7 +292,7 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m, cmd = ask.onYes(m)
 		}
 	case m.page == pageHelp:
-		m.page = pageProfiles
+		m.page = m.helpBack
 	case m.page == pageAdd:
 		m, cmd = m.addKey(msg)
 	case m.page == pageProfile:
@@ -281,6 +301,8 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m, cmd = m.loginKey(msg)
 	case m.page == pageConnecting:
 		m = m.connectingKey(name)
+	case m.page == pageRun:
+		m, cmd = m.runKey(msg)
 	case m.page == pageProfiles:
 		m, cmd = m.profilesKey(name)
 	}

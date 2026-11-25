@@ -1,0 +1,30 @@
+Tube   firefox through Work   connected 00:12:31   ↓ 1.2 MB/s  ↑ 80.0 kB/s                          
+Status  [Output]                                                                                    
+────────────────────────────────────────────────────────────────────────────────────────────────────
+firefox: line 1 of the output                                                                       
+firefox: line 2 of the output                                                                       
+firefox: line 3 of the output                                                                       
+firefox: line 4 of the output                                                                       
+firefox: line 5 of the output                                                                       
+firefox: line 6 of the output                                                                       
+firefox: line 7 of the output                                                                       
+firefox: line 8 of the output                                                                       
+firefox: line 9 of the output                                                                       
+firefox: line 10 of the output                                                                      
+firefox: line 11 of the output                                                                      
+firefox: line 12 of the output                                                                      
+firefox: line 13 of the output                                                                      
+firefox: line 14 of the output                                                                      
+firefox: line 15 of the output                                                                      
+firefox: line 16 of the output                                                                      
+firefox: line 17 of the output                                                                      
+firefox: line 18 of the output                                                                      
+firefox: line 19 of the output                                                                      
+firefox: line 20 of the output                                                                      
+firefox: line 21 of the output                                                                      
+firefox: line 22 of the output                                                                      
+firefox: line 23 of the output                                                                      
+firefox: line 24 of the output                                                                      
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+scrolled back · end: follow                                                                         

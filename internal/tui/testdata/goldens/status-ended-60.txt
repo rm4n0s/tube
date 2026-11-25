@@ -1,0 +1,16 @@
+Tube   firefox ended (status 1) through Work                
+[Status]  Output                                            
+────────────────────────────────────────────────────────────
+Application   firefox, ended with status 1                  
+VPN           Work, closed when the application ended       
+Address       -                                             
+DNS servers   -                                             
+MTU           -                                             
+                                                            
+Received      1.5 GB   1,100,000 packets   1.2 MB/s         
+Sent          80.0 MB    400,000 packets   80.0 kB/s        
+Dropped       3 packets                                     
+                                                            
+────────────────────────────────────────────────────────────
+firefox ended with status 1. Press q to quit.               
+tab shift+tab tabs   q quit   ? keys                        

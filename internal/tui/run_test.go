@@ -69,7 +69,7 @@ func TestRunWritesOnlyToItsWriter(t *testing.T) {
 	defer cancel()
 	var out syncBuffer
 	r := waitRun(t, runAsync(ctx, apptest.Sample(), Options{In: strings.NewReader("q"), Out: &out, Env: []string{"TERM=xterm"}, width: 100, height: 30}), 10*time.Second)
-	if r.err != nil || r.res.Run {
+	if r.err != nil || r.res.Started {
 		t.Errorf("Run = %+v, %v", r.res, r.err)
 	}
 	if out.String() == "" {

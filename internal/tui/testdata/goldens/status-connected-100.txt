@@ -1,0 +1,30 @@
+Tube   firefox through Work   connected 00:12:31   ↓ 1.2 MB/s  ↑ 80.0 kB/s                          
+[Status]  Output                                                                                    
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Application   firefox, running                                                                      
+VPN           Work, connected for 00:12:31                                                          
+Address       10.8.0.2/24                                                                           
+DNS servers   10.0.0.53                                                                             
+MTU           1500                                                                                  
+                                                                                                    
+Received      1.5 GB   1,100,000 packets   1.2 MB/s                                                 
+Sent          80.0 MB    400,000 packets   80.0 kB/s                                                
+Dropped       3 packets                                                                             
+                                                                                                    
+11:40:00  connected to Home; running firefox                                                        
+11:44:00  the VPN connection ended (the server did not answer); the application has no network; con…
+11:44:02  connected again                                                                           
+11:47:29  now using Work                                                                            
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+tab shift+tab tabs   q quit   ? keys                                                                

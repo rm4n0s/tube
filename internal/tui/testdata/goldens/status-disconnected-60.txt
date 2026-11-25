@@ -1,0 +1,16 @@
+Tube   firefox through Work   disconnected                  
+[Status]  Output                                            
+────────────────────────────────────────────────────────────
+Application   firefox, running                              
+VPN           Work, disconnected                            
+Address       -                                             
+DNS servers   -                                             
+MTU           -                                             
+                                                            
+Received      1.5 GB   1,100,000 packets   0 B/s            
+Sent          80.0 MB    400,000 packets   0 B/s            
+Dropped       3 packets                                     
+                                                            
+────────────────────────────────────────────────────────────
+                                                            
+tab shift+tab tabs   q quit   ? keys                        

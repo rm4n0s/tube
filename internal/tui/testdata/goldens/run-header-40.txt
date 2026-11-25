@@ -1,0 +1,12 @@
+Tube   firefox through Work   connected 
+[Status]  Output                        
+────────────────────────────────────────
+Application   firefox, running          
+VPN           Work, connected for 00:12…
+Address       10.8.0.2/24               
+DNS servers   10.0.0.53                 
+MTU           1500                      
+                                        
+────────────────────────────────────────
+                                        
+tab shift+tab tabs   q quit   ? keys    

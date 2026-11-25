@@ -107,8 +107,8 @@ func TestQuitKeys(t *testing.T) {
 	for _, key := range []string{"q", "ctrl+c"} {
 		h := newHarness(t, apptest.Sample(), 100, 30)
 		h.key(key)
-		if !h.quit || h.m().Result().Run {
-			t.Errorf("%s: quit %v, run %v", key, h.quit, h.m().Result().Run)
+		if !h.quit || h.m().Result().Started {
+			t.Errorf("%s: quit %v, started %v", key, h.quit, h.m().Result().Started)
 		}
 	}
 }

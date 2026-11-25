@@ -1,0 +1,30 @@
+Tube   firefox through Work   connected 00:12:31   ↓ 1.2 MB/s  ↑ 80.0 kB/s                          
+[Status]  Output                                                                                    
+────────────────────────────────────────────────────────────────────────────────────────────────────
+Application   firefox, running                                                                      
+VPN           Work, connected for 00:12:31                                                          
+Address       10.8.0.2/24                                                                           
+DNS servers   10.0.0.53                                                                             
+MTU           1500                                                                                  
+                                                                                                    
+Received      1.5 GB   1,100,000 packets   1.2 MB/s                                                 
+Sent          80.0 MB    400,000 packets   80.0 kB/s                                                
+Dropped       3 packets                                                                             
+                                                                                                    
+12:00:16  event 16                                                                                  
+12:00:17  event 17                                                                                  
+12:00:18  event 18                                                                                  
+12:00:19  event 19                                                                                  
+12:00:20  event 20                                                                                  
+12:00:21  event 21                                                                                  
+12:00:22  event 22                                                                                  
+12:00:23  event 23                                                                                  
+12:00:24  event 24                                                                                  
+12:00:25  event 25                                                                                  
+12:00:26  event 26                                                                                  
+12:00:27  event 27                                                                                  
+12:00:28  event 28                                                                                  
+12:00:29  event 29                                                                                  
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+tab shift+tab tabs   q quit   ? keys                                                                

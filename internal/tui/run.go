@@ -28,8 +28,8 @@ type Options struct {
 	width, height int
 }
 
-// Run runs the TUI until the user quits or ctx ends, and returns what the user chose. A
-// cancelled ctx is not an error.
+// Run runs the TUI until the user quits or ctx ends, and returns what it did. A cancelled ctx is
+// not an error.
 func Run(ctx context.Context, a app.Application, opts Options) (Result, error) {
 	clk := opts.Clock
 	if clk == nil {
@@ -74,17 +74,19 @@ func Run(ctx context.Context, a app.Application, opts Options) (Result, error) {
 	ticker.Stop()
 	close(stop)
 	<-ticked
+	// The model is returned even when the program was killed: whether the application was
+	// started is in it.
+	var res Result
+	if m, ok := final.(Model); ok {
+		res = m.Result()
+	}
 	if ctx.Err() != nil {
-		return Result{}, nil
+		return res, nil
 	}
 	if err != nil {
-		return Result{}, errors.NewErr(TagRunFailed, err)
+		return res, errors.NewErr(TagRunFailed, err)
 	}
-	m, ok := final.(Model)
-	if !ok {
-		return Result{}, nil
-	}
-	return m.Result(), nil
+	return res, nil
 }
 
 // envGetter looks a variable up in an environment of "NAME=value" strings; the last one wins, as

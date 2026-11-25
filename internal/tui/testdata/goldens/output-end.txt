@@ -1,0 +1,30 @@
+Tube   firefox through Work   connected 00:12:31   ↓ 1.2 MB/s  ↑ 80.0 kB/s                          
+Status  [Output]                                                                                    
+────────────────────────────────────────────────────────────────────────────────────────────────────
+firefox: line 17 of the output                                                                      
+firefox: line 18 of the output                                                                      
+firefox: line 19 of the output                                                                      
+firefox: line 20 of the output                                                                      
+firefox: line 21 of the output                                                                      
+firefox: line 22 of the output                                                                      
+firefox: line 23 of the output                                                                      
+firefox: line 24 of the output                                                                      
+firefox: line 25 of the output                                                                      
+firefox: line 26 of the output                                                                      
+firefox: line 27 of the output                                                                      
+firefox: line 28 of the output                                                                      
+firefox: line 29 of the output                                                                      
+firefox: line 30 of the output                                                                      
+firefox: line 31 of the output                                                                      
+firefox: line 32 of the output                                                                      
+firefox: line 33 of the output                                                                      
+firefox: line 34 of the output                                                                      
+firefox: line 35 of the output                                                                      
+firefox: line 36 of the output                                                                      
+firefox: line 37 of the output                                                                      
+firefox: line 38 of the output                                                                      
+firefox: line 39 of the output                                                                      
+firefox: line 40 of the output                                                                      
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+keys go to firefox · tab: next tab · pgup pgdn: scroll                                              

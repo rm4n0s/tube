@@ -88,7 +88,7 @@ func (m Model) profilesKey(name string) (Model, tea.Cmd) {
 	case "q":
 		return m, tea.Quit
 	case "?":
-		m.page = pageHelp
+		m.page, m.helpBack = pageHelp, pageProfiles
 	case "a":
 		return m.openAdd(), nil
 	case "d":

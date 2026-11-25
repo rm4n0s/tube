@@ -87,8 +87,8 @@ func TestGoldenConnecting(t *testing.T) {
 	h.golden("connecting-12")
 	close(f.Block["Connect"])
 	h.send(<-done)
-	if !h.quit || !h.m().Result().Run {
-		t.Error("the TUI did not quit to run")
+	if h.m().page != pageRun || !h.m().Result().Started {
+		t.Error("the run screen is not shown")
 	}
 }
 
@@ -117,18 +117,18 @@ func TestConnectFlow(t *testing.T) {
 	h := newHarness(t, f, 100, 30)
 	h.selectProfile("id-home")
 	h.key("enter")
-	if got := f.Calls(); !slices.Equal(got, []string{"Connect(id-home, nil, false)"}) {
+	if got := f.Calls(); !slices.Equal(got, []string{"Connect(id-home, nil, false)", "Start()"}) {
 		t.Errorf("Calls = %q", got)
 	}
-	if !h.quit || !h.m().Result().Run {
-		t.Error("the TUI did not quit to run")
+	if h.quit || h.m().page != pageRun || !h.m().Result().Started {
+		t.Error("the run screen is not shown")
 	}
 	t.Run("from the profile's page", func(t *testing.T) {
 		f := apptest.Sample()
 		h := newHarness(t, f, 100, 30)
 		h.open("id-home")
 		h.key("enter")
-		if got := f.Calls(); !slices.Equal(got, []string{"Connect(id-home, nil, false)"}) {
+		if got := f.Calls(); !slices.Equal(got, []string{"Connect(id-home, nil, false)", "Start()"}) {
 			t.Errorf("Calls = %q", got)
 		}
 	})
@@ -152,11 +152,11 @@ func TestLoginFlow(t *testing.T) {
 			h.keys(tt.keys...)
 			h.typeText("hunter2")
 			h.key("enter")
-			if got := f.Calls(); !slices.Equal(got, []string{tt.want}) {
+			if got := f.Calls(); !slices.Equal(got, []string{tt.want, "Start()"}) {
 				t.Errorf("Calls = %q", got)
 			}
-			if !h.m().Result().Run {
-				t.Error("the TUI did not quit to run")
+			if !h.m().Result().Started {
+				t.Error("the application was not started")
 			}
 		})
 	}
@@ -267,7 +267,7 @@ func TestCancel(t *testing.T) {
 		if c, ok := (<-done).(connectedMsg); !ok || !errors.Is(c.err, context.Canceled) {
 			t.Error("ctrl+c did not cancel the connect")
 		}
-		if !h.quit || h.m().Result().Run {
+		if !h.quit || h.m().Result().Started {
 			t.Error("ctrl+c did not quit without running")
 		}
 	})

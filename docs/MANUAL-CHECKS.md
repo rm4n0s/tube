@@ -48,3 +48,16 @@ Expected: no new window opens inside the Firefox that already runs (whose traffi
 Press `a`, type the path of a real provider's `.ovpn` file, and press Enter. Then try a file that Tube cannot use, if you have one (for example one with `comp-lzo`, or one that names files that are not next to it).
 
 Expected: the real file is added, and its page (`e`) shows its servers and its login; the errors for a file that Tube cannot use are sentences that say what is wrong and on which line.
+
+## Step 6.2: the run screen with Firefox
+
+With a real provider's profile:
+
+```sh
+go build -o tube ./cmd/tube
+./tube firefox -P tube-check --no-remote
+```
+
+Select the profile and press Enter. Play a video in that Firefox window. Then press Tab, and after that `q`, then `y`.
+
+Expected: the Status tab's rates (`↓` on the first line, and `Received`) move while the video plays; the Output tab shows what Firefox prints; `q`, `y` closes Firefox and Tube ends.

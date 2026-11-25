@@ -57,7 +57,17 @@ func (r *screenReader) waitFor(t *testing.T, want string) {
 	t.Fatalf("no %q on the screen:\n%s", want, ansi.Strip(r.buf.String()))
 }
 
-func TestTheTUIRunsPing(t *testing.T) {
+// inTerminal is the program running in a pseudo-terminal of the test.
+type inTerminal struct {
+	cmd    *exec.Cmd
+	master *os.File
+	screen *screenReader
+}
+
+// startInTerminal builds the program, starts a server with its profile "test", and runs the
+// program with the arguments in a pseudo-terminal of 100x30.
+func startInTerminal(t *testing.T, args ...string) (*inTerminal, *vpntest.Server) {
+	t.Helper()
 	if _, err := exec.LookPath("openvpn"); err != nil {
 		t.Skip("openvpn is not installed")
 	}
@@ -73,15 +83,15 @@ func TestTheTUIRunsPing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
+	t.Cleanup(func() {
 		if err := master.Close(); err != nil {
 			t.Error(err)
 		}
-	}()
+	})
 	if err := pty.SetSize(master, 100, 30); err != nil {
 		t.Fatal(err)
 	}
-	cmd := e.command(t, "ping", "-c", "2", "-W", "2", server.TunnelAddr().String())
+	cmd := e.command(t, args...)
 	cmd.Env = append(cmd.Env, "TERM=xterm-256color")
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = slave, slave, slave
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true, Setctty: true, Ctty: 0}
@@ -91,18 +101,65 @@ func TestTheTUIRunsPing(t *testing.T) {
 	if err := slave.Close(); err != nil {
 		t.Fatal(err)
 	}
-	screen := readScreen(master)
-	screen.waitFor(t, "test")
-	if _, err := master.WriteString("\r"); err != nil {
+	return &inTerminal{cmd: cmd, master: master, screen: readScreen(master)}, server
+}
+
+// press writes keys to the program's terminal.
+func (p *inTerminal) press(t *testing.T, keys string) {
+	t.Helper()
+	if _, err := p.master.WriteString(keys); err != nil {
 		t.Fatal(err)
 	}
-	screen.waitFor(t, "bytes from "+server.TunnelAddr().String())
-	if err := cmd.Wait(); err != nil {
-		t.Errorf("tube ended with %v; the screen:\n%s\nthe server's log:\n%s", err, ansi.Strip(screen.buf.String()), server.Log())
+}
+
+// wait waits for the end of the program, 10 seconds at most, and returns its exit status.
+func (p *inTerminal) wait(t *testing.T, server *vpntest.Server) int {
+	t.Helper()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		// The status says how it ended.
+		_ = p.cmd.Wait()
+	}()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatalf("tube did not end; the screen:\n%s\nthe server's log:\n%s", ansi.Strip(p.screen.buf.String()), server.Log())
 	}
 	select {
-	case <-screen.done:
+	case <-p.screen.done:
 	case <-time.After(10 * time.Second):
 		t.Error("the pseudo-terminal stayed open")
+	}
+	return p.cmd.ProcessState.ExitCode()
+}
+
+func TestTheTUIRunsPing(t *testing.T) {
+	p, server := startInTerminal(t, "ping", "-c", "2", "-W", "2", "10.8.0.1")
+	p.screen.waitFor(t, "test")
+	p.press(t, "\r")
+	p.screen.waitFor(t, "[Status]")
+	p.press(t, "\t")
+	p.screen.waitFor(t, "bytes from "+server.TunnelAddr().String())
+	p.screen.waitFor(t, "ended with status 0")
+	p.press(t, "q")
+	if status := p.wait(t, server); status != 0 {
+		t.Errorf("the status is %d; the screen:\n%s", status, ansi.Strip(p.screen.buf.String()))
+	}
+}
+
+func TestQuitStopsTheApplication(t *testing.T) {
+	p, server := startInTerminal(t, "sleep", "300")
+	p.screen.waitFor(t, "test")
+	p.press(t, "\r")
+	p.screen.waitFor(t, "[Status]")
+	p.press(t, "q")
+	p.screen.waitFor(t, "Stop it and quit?")
+	p.press(t, "y")
+	if status := p.wait(t, server); status != 143 {
+		t.Errorf("the status is %d; the screen:\n%s", status, ansi.Strip(p.screen.buf.String()))
+	}
+	if left := processesWith("sleep\x00300"); len(left) > 0 {
+		t.Errorf("the application is left: %v", left)
 	}
 }

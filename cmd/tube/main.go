@@ -137,23 +137,30 @@ func (c cli) run(ctx context.Context, args []string) int {
 	return status
 }
 
-// runTUI runs the TUI, and then the application when the user chose to run it.
+// runTUI runs the TUI; the application runs under it (docs/SPEC.md §11). SIGTERM and SIGHUP
+// end the TUI; Finish then stops the application. The status is the application's, or 130 when
+// the user quit before one was started (0 without an application).
 func (c cli) runTUI(ctx context.Context, a *app.App, f flags) int {
-	res, err := tui.Run(ctx, a, tui.Options{In: c.stdin, Out: c.stdout})
+	tuiCtx, stop := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGHUP)
+	res, err := tui.Run(tuiCtx, a, tui.Options{In: c.stdin, Out: c.stdout})
+	stop()
+	if res.Started {
+		status, ferr := a.Finish()
+		if ferr != nil {
+			c.say(app.Explain(ferr))
+		}
+		if err != nil {
+			c.say(app.Explain(err))
+		}
+		return status
+	}
 	if err != nil {
 		return c.fail(err)
 	}
-	if !res.Run {
-		if len(f.target) == 0 {
-			return statusOK
-		}
-		return statusInterrupted
+	if len(f.target) == 0 {
+		return statusOK
 	}
-	status, err := c.runWithSignals(ctx, a)
-	if err != nil {
-		c.say(app.Explain(err))
-	}
-	return status
+	return statusInterrupted
 }
 
 // runApp connects the profile of --profile and runs the application, or runs the TUI.
