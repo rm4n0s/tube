@@ -10,8 +10,11 @@ const (
 	pageProfiles page = iota
 	pageHelp
 	pageAdd
-	// pageQuestion is not a page: its keys are the ones of an open question.
+	pageProfile
+	// pageQuestion and pageField are not pages: their keys are the ones of an open question,
+	// and of a field open on a profile's page.
 	pageQuestion
+	pageField
 )
 
 // binding is a key, or keys, and what it does on a page.
@@ -30,9 +33,12 @@ type pageBindings struct {
 // they cannot disagree. withTarget says whether there is an application to run.
 func bindings(withTarget bool) []pageBindings {
 	enter := binding{"enter", "open"}
+	profile := []binding{{"r", "rename"}, {"u", "user"}, {"n", "DNS"}, {"t", "edit"}, {"d", "delete"}}
 	if withTarget {
 		enter = binding{"enter", "run"}
+		profile = append(profile, enter)
 	}
+	profile = append(profile, binding{"esc", "back"})
 	return []pageBindings{
 		{"Profiles", pageProfiles, []binding{
 			{"↑↓ jk", "move"}, enter, {"a", "add"}, {"e", "open"}, {"d", "delete"}, {"?", "keys"}, {"q", "quit"},
@@ -40,6 +46,8 @@ func bindings(withTarget bool) []pageBindings {
 		{"Add", pageAdd, []binding{
 			{"tab", "complete"}, {"↑↓", "field"}, {"enter", "add"}, {"esc", "back"},
 		}},
+		{"Profile", pageProfile, profile},
+		{"Field", pageField, []binding{{"enter", "save"}, {"esc", "cancel"}}},
 		{"Question", pageQuestion, []binding{{"y", "yes"}, {"n esc enter", "no"}}},
 		{"Keys", pageHelp, []binding{{"any key", "close"}}},
 	}

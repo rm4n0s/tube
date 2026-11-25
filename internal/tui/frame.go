@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 // The smallest terminal that the TUI draws on (docs/SPEC.md §13).
@@ -68,17 +69,27 @@ func (m Model) messageLine() string {
 	return clean(m.message)
 }
 
-// footer is the keys of the page.
+// footer is the keys of the page, three spaces apart, or two when that does not fit.
 func (m Model) footer() string {
 	var parts []string
 	p := m.page
-	if m.ask != nil {
+	prof, ok := m.profile()
+	switch {
+	case m.ask != nil:
 		p = pageQuestion
+	case p == pageProfile && m.prof.open != noField:
+		p = pageField
 	}
 	for _, b := range footerBindings(p, len(m.snap.Target) > 0) {
+		if p == pageProfile && ok && prof.Broken != "" && b.keys != "d" && b.keys != "esc" {
+			continue
+		}
 		parts = append(parts, m.styles.key.Render(b.keys)+" "+b.what)
 	}
-	return strings.Join(parts, "   ")
+	if line := strings.Join(parts, "   "); lipgloss.Width(line) <= m.width {
+		return line
+	}
+	return strings.Join(parts, "  ")
 }
 
 // body is the page's lines.
@@ -88,6 +99,8 @@ func (m Model) body() []string {
 		return m.helpBody()
 	case m.page == pageAdd && m.add != nil:
 		return m.addBody()
+	case m.page == pageProfile:
+		return m.profileBody()
 	}
 	return m.profilesBody()
 }

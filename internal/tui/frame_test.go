@@ -24,7 +24,7 @@ func TestTooSmall(t *testing.T) {
 func TestEveryLineFits(t *testing.T) {
 	for _, w := range []int{40, 60, 100, 137} {
 		for _, hgt := range []int{10, 30, 50} {
-			for _, page := range []string{"profiles", "help", "add", "question"} {
+			for _, page := range []string{"profiles", "help", "add", "question", "profile", "field"} {
 				h := newHarness(t, apptest.Sample(), w, hgt)
 				switch page {
 				case "help":
@@ -34,6 +34,12 @@ func TestEveryLineFits(t *testing.T) {
 					h.typeText(strings.Repeat("/a-long-folder-name", 10))
 				case "question":
 					h.key("d")
+				case "profile", "field":
+					h.keys("down", "e")
+					if page == "field" {
+						h.key("n")
+						h.typeText(strings.Repeat("10.0.0.1, ", 30))
+					}
 				}
 				lines := strings.Split(h.model.View().Content, "\n")
 				if len(lines) != hgt {

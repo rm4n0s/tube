@@ -9,6 +9,7 @@ package tui
 import (
 	"context"
 	"os"
+	"os/exec"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -58,6 +59,8 @@ type Model struct {
 	selectID string
 	// add is the add page's state, while it is open.
 	add *addPage
+	// prof is the state of a profile's page, while it is open.
+	prof *profilePage
 	// ask is the open question; it gets every key.
 	ask *asking
 	// message is the line above the keys; isError draws it as an error.
@@ -67,6 +70,13 @@ type Model struct {
 	// home and readDir are for the completion of paths.
 	home    string
 	readDir func(dir string) ([]os.DirEntry, error)
+
+	// getenv and lookPath find the editor; execEditor runs it (the tests replace it). editor is
+	// the editor of the edit that runs.
+	getenv     func(string) string
+	lookPath   func(string) (string, error)
+	execEditor func(argv []string, id, path string) tea.Cmd
+	editor     []string
 
 	result Result
 }
@@ -78,7 +88,10 @@ func NewModel(ctx context.Context, a app.Application, clk clock.Clock) Model {
 	}
 	// Without a home folder, "~" is not completed; nothing else needs it.
 	home, _ := os.UserHomeDir()
-	return Model{ctx: ctx, app: a, clock: clk, styles: newStyles(), page: pageProfiles, home: home, readDir: defaultReadDir}
+	return Model{
+		ctx: ctx, app: a, clock: clk, styles: newStyles(), page: pageProfiles, home: home, readDir: defaultReadDir,
+		getenv: os.Getenv, lookPath: exec.LookPath, execEditor: execEditor,
+	}
 }
 
 // Result is what the user chose.
@@ -120,11 +133,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.setError(msg.err)
 		} else {
 			m.setNotice("Deleted " + msg.name + ".")
+			if m.page == pageProfile {
+				m = m.closeProfile()
+			}
 		}
 		return m, m.readSnapshot()
+	case fieldDoneMsg:
+		return m.fieldDone(msg)
+	case editBeganMsg:
+		return m.editBegan(msg)
+	case editorDoneMsg:
+		return m.editorDone(msg)
+	case editEndedMsg:
+		return m.editEnded(msg)
 	case tea.PasteMsg:
-		if m.ask == nil && m.page == pageAdd {
+		switch {
+		case m.ask != nil:
+		case m.page == pageAdd:
 			m = m.addPaste(msg.Content)
+		case m.page == pageProfile:
+			m = m.profilePaste(msg.Content)
 		}
 	case tea.KeyPressMsg:
 		return m.key(msg)
@@ -159,6 +187,9 @@ func (m *Model) takeSnapshot(msg snapshotMsg) {
 		if p.ID == selected {
 			m.list.selectIndex(i)
 		}
+	}
+	if _, ok := m.profile(); m.page == pageProfile && !ok {
+		*m = m.closeProfile()
 	}
 }
 
@@ -237,6 +268,8 @@ func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.page = pageProfiles
 	case m.page == pageAdd:
 		m, cmd = m.addKey(msg)
+	case m.page == pageProfile:
+		m, cmd = m.profileKey(msg)
 	case m.page == pageProfiles:
 		m, cmd = m.profilesKey(name)
 	}

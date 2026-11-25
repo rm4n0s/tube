@@ -115,7 +115,7 @@ func TestQuitKeys(t *testing.T) {
 
 func TestKeysOfLaterSteps(t *testing.T) {
 	h := newHarness(t, apptest.Sample(), 100, 30)
-	h.key("e")
+	h.key("enter")
 	h.has(notBuilt)
 	h.key("down")
 	if strings.Contains(h.screen(), notBuilt) {

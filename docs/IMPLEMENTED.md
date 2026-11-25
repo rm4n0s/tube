@@ -257,3 +257,15 @@ The log of the finished steps of `docs/IMPLEMENTATION.md`, in order (its rule 11
   - The completion runs as a command (`completedMsg`), not inside `Update`, since it reads folders.
   - The test of a real `app.App` gives the folders through the App's environment (`TUBE_CONFIG_DIR`, `TUBE_STATE_DIR`, `XDG_RUNTIME_DIR`, `HOME`), not through `storagetest.Isolate`: the TUI may not import the core's helpers (SPEC §4.2 rule 2). Its broken profile is typed as `~/bad.ovpn` in that home folder, so the golden file does not hold a temporary path.
   - The test of hostile names of step 5.2 held U+FFFD where it meant ESC, and checked the screen with the styles stripped, so it did not see that the escape sequences of a name reached the terminal raw. It now uses real ESC and C1 bytes and checks the raw view; the TUI cleans the snapshot (above).
+
+## Step 5.4: The profile's page and the editor
+- Date: 2026-11-25
+- What was done: `e` on the list opens a profile's page: `Name`, `Servers` (at most 8, then `… and N more`), `Login`, `User name`, `DNS servers`, `Last used`, `Files`, `Ignored options` (at most 3 lines), each cut to the width; a broken profile shows `Cannot be used` with its reason and takes only `d` and `esc`. `r`, `u`, `n` open one field under the lines (filled with the current value; `enter` saves, `esc` closes; an error leaves the field open with its text); `t` edits the text in the user's editor (`findEditor`: `$VISUAL`, `$EDITOR`, `nano`, `vi`, split at spaces, never a shell; `BeginEdit`, `tea.ExecProcess`, `EndEdit` even when the editor failed; `Saved.`, `Nothing changed.`, `The profile was not changed: …`, `No editor found. Set EDITOR.`); `d` deletes and goes back to the list; a profile that leaves the snapshot closes its page. `tui.Run` takes the editor's variables from `Options.Env` when it is set.
+- Checks: `scripts/checks.sh` passed, with the tests against the real server. Every golden file was read (the eight `profile-*`, and `help` and `profiles-sample-40x10`, changed).
+- Proofs: `docs/implemented-proof-images/5.4-profile.txt` (the page of `Home` with every label of task 1, the page's keys in the footer); read, and it shows what the step describes. No tmux or tube process was left.
+- Manual checks: none
+- Differences from the plan or the spec:
+  - The footer's labels of the page are short (`u user`, `n DNS`, `t edit`), and a footer that does not fit with three spaces between the keys gets two; at 60 columns with an application the page's footer is still cut in its last key (`esc b…`), from 62 columns it fits.
+  - When a field is open and the page is too short for the lines and the field, the lines are cut so that the field stays visible.
+  - A text that was saved counts even when the editor then ended with an error; an editor that failed without a change shows `The profile was not changed: the editor failed: …`.
+  - `enter` on the list stays "not built yet" until step 5.5; on the profile's page it does so only with an application.

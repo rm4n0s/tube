@@ -92,9 +92,15 @@ func (m Model) profilesKey(name string) (Model, tea.Cmd) {
 	case "a":
 		return m.openAdd(), nil
 	case "d":
-		return m.askDelete(), nil
-	case "enter", "e":
-		// TODO(step 5.4, 5.5): the profile's page, connecting.
+		if len(m.snap.Profiles) > 0 {
+			return m.askDelete(m.snap.Profiles[m.list.selected()]), nil
+		}
+	case "e":
+		if len(m.snap.Profiles) > 0 {
+			return m.openProfile(m.snap.Profiles[m.list.selected()].ID), nil
+		}
+	case "enter":
+		// TODO(step 5.5): connecting, or the profile's page without a target.
 		m.setNotice(notBuilt)
 	default:
 		m.list.key(name)
@@ -108,12 +114,8 @@ type deletedMsg struct {
 	err  error
 }
 
-// askDelete asks whether to delete the selected profile.
-func (m Model) askDelete() Model {
-	if len(m.snap.Profiles) == 0 {
-		return m
-	}
-	p := m.snap.Profiles[m.list.selected()]
+// askDelete asks whether to delete the profile.
+func (m Model) askDelete(p app.Profile) Model {
 	a, ctx := m.app, m.ctx
 	m.ask = &asking{
 		q: question{

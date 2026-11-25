@@ -1,0 +1,30 @@
+Tube   select a profile to run true
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  Name             Home
+  Servers          home.example.net:1194 udp
+  Login            a certificate only
+  User name        not remembered
+  DNS servers      from the VPN
+  Last used        never
+  Files            inside the profile
+  Ignored options  dev, nobind
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+r rename   u user   n DNS   t edit   d delete   enter run   esc back

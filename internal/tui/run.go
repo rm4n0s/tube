@@ -5,6 +5,7 @@ package tui
 import (
 	"context"
 	"io"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -47,7 +48,11 @@ func Run(ctx context.Context, a app.Application, opts Options) (Result, error) {
 	if opts.width > 0 {
 		popts = append(popts, tea.WithWindowSize(opts.width, opts.height))
 	}
-	p := tea.NewProgram(NewModel(ctx, a, clk), popts...)
+	model := NewModel(ctx, a, clk)
+	if opts.Env != nil {
+		model.getenv = envGetter(opts.Env)
+	}
+	p := tea.NewProgram(model, popts...)
 	// Send waits until the program runs; the app's goroutine must not wait.
 	cancel := a.Subscribe(func() { go p.Send(changedMsg{}) })
 	defer cancel()
@@ -80,4 +85,18 @@ func Run(ctx context.Context, a app.Application, opts Options) (Result, error) {
 		return Result{}, nil
 	}
 	return m.Result(), nil
+}
+
+// envGetter looks a variable up in an environment of "NAME=value" strings; the last one wins, as
+// in os/exec.
+func envGetter(env []string) func(string) string {
+	return func(name string) string {
+		value := ""
+		for _, kv := range env {
+			if k, v, ok := strings.Cut(kv, "="); ok && k == name {
+				value = v
+			}
+		}
+		return value
+	}
 }
