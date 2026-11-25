@@ -220,3 +220,14 @@ The log of the finished steps of `docs/IMPLEMENTATION.md`, in order (its rule 11
   - The byte after the first 256 of a sequence that never ends is read normally; the test checks that none of the first 256 reaches a line.
   - `Log.String` joins all the lines, for logs and tests.
   - The first version of the test had the invisible characters it tests written as themselves; they are escapes now (SPEC §4.2 rule 10).
+
+## Step 5.1: The snapshot and the commands
+- Date: 2026-11-25
+- What was done: `App.Snapshot` (the target made safe, the profiles as the TUI shows them, the clock's time); the commands of SPEC §12.2 (`AddProfile` with `~/` and the default name, `RenameProfile`, `SetUsername`, `SetDNS`, `DeleteProfile`, `BeginEdit`/`EndEdit` through a file of mode 0600 in the App's temporary folder, which `Close` removes); `Subscribe`, called after every change that worked, also when `Connect` marked the profile used or saved the user name; the `Application` interface, `IsRunsScripts` and `IsAuthFailed`; `apptest.Fake` with `Sample()` and `Empty()`.
+- Checks: `scripts/checks.sh` passed, with the tests against the real server.
+- Proofs: none
+- Manual checks: none
+- Differences from the plan or the spec:
+  - SPEC §12.2 already said that the commands block, take a context and run inside a `tea.Cmd` of the TUI: task 5 had nothing to change.
+  - The fake does not record `Snapshot` and `Subscribe` in `Calls`; its `AddProfile` returns the id `id-new`, `BeginEdit` the path `/edit/<id>.ovpn`, and `EndEdit` says that the profile changed.
+  - `IsRunsScripts` makes the list of options safe with `sanitize.Display` (200 characters).

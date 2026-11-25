@@ -76,6 +76,15 @@ type App struct {
 	session *session.Session
 	running bool
 	pending syscall.Signal
+	// tempDir is the folder of edits, made on first use; edits are the files that BeginEdit
+	// gave, by profile.
+	tempDir string
+	edits   map[string]string
+
+	// subs are the subscribers to the changes of the profiles.
+	subsMu  sync.Mutex
+	subs    map[int]func()
+	nextSub int
 }
 
 // Open resolves and makes the folders, opens the log and the store.
@@ -97,7 +106,10 @@ func Open(ctx context.Context, opts Options) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	a := &App{opts: opts, dirs: dirs, store: profiles.NewStore(dirs.Config, opts.Clock), log: log, logCloser: closer}
+	a := &App{
+		opts: opts, dirs: dirs, store: profiles.NewStore(dirs.Config, opts.Clock), log: log, logCloser: closer,
+		edits: map[string]string{}, subs: map[int]func(){},
+	}
 	log.Info("tube started", "version", Version())
 	return a, nil
 }
@@ -106,12 +118,17 @@ func Open(ctx context.Context, opts Options) (*App, error) {
 // the credentials.
 func (a *App) Close() error {
 	a.mu.Lock()
-	tun := a.tunnel
-	a.tunnel, a.creds = nil, nil
+	tun, tmp := a.tunnel, a.tempDir
+	a.tunnel, a.creds, a.tempDir = nil, nil, ""
 	a.mu.Unlock()
 	if tun != nil {
 		if err := tun.Close(); err != nil {
 			a.log.Warn("a tunnel that was not used was closed with an error", "err", err)
+		}
+	}
+	if tmp != "" {
+		if err := os.RemoveAll(tmp); err != nil {
+			a.log.Warn("the folder of the edits cannot be removed", "err", err)
 		}
 	}
 	a.log.Info("tube ended")
@@ -183,13 +200,21 @@ func (a *App) connect(ctx context.Context, id string, creds *Credentials, rememb
 	n := tun.Network()
 	a.log.Info("connected", "profile", p.ID, "name", p.Name, "addrs", n.Addrs, "dns", n.DNSServers, "mtu", n.MTU)
 	// The connection is what the user asked for: these only change what the list shows.
+	changed := false
 	if err := a.store.MarkUsed(ctx, id); err != nil {
 		a.log.Warn("the profile cannot be marked as used", "err", err, "profile", id)
+	} else {
+		changed = true
 	}
 	if remember && creds != nil {
 		if err := a.store.SetUsername(ctx, id, creds.Username); err != nil {
 			a.log.Warn("the user name cannot be remembered", "err", err, "profile", id)
+		} else {
+			changed = true
 		}
+	}
+	if changed {
+		a.notify()
 	}
 	return nil
 }
