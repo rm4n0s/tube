@@ -76,6 +76,8 @@ type App struct {
 	session *session.Session
 	running bool
 	pending syscall.Signal
+	// rd is what Start made and what the run changes.
+	rd runData
 	// tempDir is the folder of edits, made on first use; edits are the files that BeginEdit
 	// gave, by profile.
 	tempDir string
@@ -114,9 +116,14 @@ func Open(ctx context.Context, opts Options) (*App, error) {
 	return a, nil
 }
 
-// Close closes what is open: a tunnel that was connected and never run, and the log. It forgets
-// the credentials.
+// Close closes what is open: the application that Start started (Finish), a tunnel that was
+// connected and never run, and the log. It forgets the credentials.
 func (a *App) Close() error {
+	if a.startedRun() != nil {
+		if _, err := a.Finish(); err != nil {
+			a.log.Warn("the application ended with an error", "err", err)
+		}
+	}
 	a.mu.Lock()
 	tun, tmp := a.tunnel, a.tempDir
 	a.tunnel, a.creds, a.tempDir = nil, nil, ""
@@ -182,40 +189,13 @@ func (a *App) Connect(ctx context.Context, id string, creds *Credentials, rememb
 
 // connect is Connect without the log of its failure.
 func (a *App) connect(ctx context.Context, id string, creds *Credentials, remember bool) error {
-	p, err := a.store.Get(ctx, id)
-	if err != nil {
-		return err
-	}
-	var vc *vpn.Credentials
-	if creds != nil {
-		vc = &vpn.Credentials{Username: creds.Username, Password: creds.Password}
-	}
-	tun, err := vpn.Dial(ctx, p, vc)
+	d, err := a.dial(ctx, id, creds, remember)
 	if err != nil {
 		return err
 	}
 	a.mu.Lock()
-	a.tunnel, a.profile, a.creds = tun, p, vc
+	a.tunnel, a.profile, a.creds = d.tun, d.p, d.creds
 	a.mu.Unlock()
-	n := tun.Network()
-	a.log.Info("connected", "profile", p.ID, "name", p.Name, "addrs", n.Addrs, "dns", n.DNSServers, "mtu", n.MTU)
-	// The connection is what the user asked for: these only change what the list shows.
-	changed := false
-	if err := a.store.MarkUsed(ctx, id); err != nil {
-		a.log.Warn("the profile cannot be marked as used", "err", err, "profile", id)
-	} else {
-		changed = true
-	}
-	if remember && creds != nil {
-		if err := a.store.SetUsername(ctx, id, creds.Username); err != nil {
-			a.log.Warn("the user name cannot be remembered", "err", err, "profile", id)
-		} else {
-			changed = true
-		}
-	}
-	if changed {
-		a.notify()
-	}
 	return nil
 }
 
@@ -243,22 +223,11 @@ func (a *App) setTunnel(tun vpn.Tunnel, p profiles.Profile) {
 // status (docs/SPEC.md §12.4). The tunnel belongs to the session from then on; when the
 // application cannot be started, the tunnel is closed.
 func (a *App) Run(ctx context.Context) (int, error) {
-	a.mu.Lock()
-	tun, p, creds := a.tunnel, a.profile, a.creds
-	a.tunnel = nil
-	a.mu.Unlock()
-	if tun == nil {
-		return sandbox.StatusTubeFailed, errors.New(TagNotConnected, "no VPN is connected")
-	}
-	if len(a.opts.Argv) == 0 {
-		a.closeTunnelOf(tun)
-		return sandbox.StatusTubeFailed, errors.New(TagNoTarget, "there is no application to run")
-	}
-	path, err := sandbox.LookPath(a.opts.Argv[0])
+	tk, err := a.takeTunnel()
 	if err != nil {
-		a.closeTunnelOf(tun)
 		return sandbox.ExitCodeOf(err), err
 	}
+	tun, p, creds, path := tk.tun, tk.p, tk.creds, tk.path
 	a.log.Info("run started", "profile", p.ID, "name", p.Name, "application", sanitize.Display(a.opts.Argv[0], maxNameInError))
 	a.mu.Lock()
 	a.running = true
@@ -282,15 +251,48 @@ func (a *App) Run(ctx context.Context) (int, error) {
 	pending := a.pending
 	a.mu.Unlock()
 	if pending != 0 {
-		s.Signal(pending)
+		a.Signal(pending)
 	}
 	status, err := s.Wait()
+	a.stopKillTimer()
 	if err != nil {
 		a.log.Error("run failed", "err", err, "profile", p.ID)
 		return status, err
 	}
 	a.log.Info("run ended", "profile", p.ID, "status", status)
 	return status, nil
+}
+
+// taken is what takeTunnel took: the tunnel, its profile and credentials, and the application's
+// path.
+type taken struct {
+	tun   vpn.Tunnel
+	p     profiles.Profile
+	creds *vpn.Credentials
+	path  string
+}
+
+// takeTunnel takes the connected tunnel for a run, and finds the application. When there is no
+// tunnel, no target, or no such application, it fails; a tunnel that it took is then closed.
+func (a *App) takeTunnel() (taken, error) {
+	a.mu.Lock()
+	tk := taken{tun: a.tunnel, p: a.profile, creds: a.creds}
+	a.tunnel = nil
+	a.mu.Unlock()
+	if tk.tun == nil {
+		return taken{}, errors.New(TagNotConnected, "no VPN is connected")
+	}
+	if len(a.opts.Argv) == 0 {
+		a.closeTunnelOf(tk.tun)
+		return taken{}, errors.New(TagNoTarget, "there is no application to run")
+	}
+	path, err := sandbox.LookPath(a.opts.Argv[0])
+	if err != nil {
+		a.closeTunnelOf(tk.tun)
+		return taken{}, err
+	}
+	tk.path = path
+	return tk, nil
 }
 
 // redialTimeout is how long one try to connect again may take.
@@ -318,12 +320,16 @@ func (a *App) closeTunnelOf(tun vpn.Tunnel) {
 }
 
 // Signal passes a signal to the application, when one runs. A signal that comes while the
-// application is being started is passed on as soon as it has started.
+// application is being started is passed on as soon as it has started. SIGTERM and SIGHUP are
+// followed by SIGKILL when the application has not ended five seconds later.
 func (a *App) Signal(sig syscall.Signal) {
 	a.mu.Lock()
 	s := a.session
 	if s == nil && a.running {
 		a.pending = sig
+	}
+	if s != nil && (sig == syscall.SIGTERM || sig == syscall.SIGHUP) {
+		a.killLater(s)
 	}
 	a.mu.Unlock()
 	if s != nil {

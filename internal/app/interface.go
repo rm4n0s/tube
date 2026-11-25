@@ -23,6 +23,15 @@ type Application interface {
 	BeginEdit(ctx context.Context, id string) (string, error)
 	EndEdit(ctx context.Context, id, path string) (bool, error)
 	Connect(ctx context.Context, id string, creds *Credentials, remember bool) error
+	Start(ctx context.Context) error
+	RunState() RunState
+	OutputLen() (first, end int)
+	OutputRange(from, to int) []string
+	Input(p []byte) error
+	ResizeOutput(cols, rows int)
+	Disconnect()
+	Switch(ctx context.Context, id string, creds *Credentials, remember bool) error
+	Stop()
 }
 
 var _ Application = (*App)(nil)

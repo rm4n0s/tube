@@ -192,7 +192,7 @@ var fakeNetwork = vpn.Network{
 func TestRunWithoutConnect(t *testing.T) {
 	a, _ := open(t, "true")
 	status, err := a.Run(context.Background())
-	errtest.Route(t, err, "App.Run.AppNotConnected")
+	errtest.Route(t, err, "App.Run->App.takeTunnel.AppNotConnected")
 	if status != 125 {
 		t.Errorf("the status is %d", status)
 	}
@@ -203,7 +203,7 @@ func TestRunWithoutTarget(t *testing.T) {
 	tun := vpntest.NewTunnel(fakeNetwork)
 	a.setTunnel(tun, profiles.Profile{ID: "0123456789abcdef", Name: "fake"})
 	_, err := a.Run(context.Background())
-	errtest.Route(t, err, "App.Run.AppNoTarget")
+	errtest.Route(t, err, "App.Run->App.takeTunnel.AppNoTarget")
 	if !tun.Closed() {
 		t.Error("the tunnel is not closed")
 	}

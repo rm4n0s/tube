@@ -282,3 +282,16 @@ The log of the finished steps of `docs/IMPLEMENTATION.md`, in order (its rule 11
   - A connect that the user cancelled goes back even when it succeeded at the same moment; the App closes that tunnel at the next connect or when it closes.
   - The connecting page goes back to the profile's page (not the list) after a cancel, when it was started from there; after an error it goes to the list, as the plan says.
   - The help page lists the keys of the login and connecting pages.
+
+## Step 6.1: Running the application under the App
+- Date: 2026-11-25
+- What was done: `App.Start` runs the application on a pseudo-terminal (`TERM=dumb`, the slave side as its terminal, the master side copied into a `termlog` of 5000 lines until EIO) and returns; `RunState` (the session's status, the rates of the last second from a sampler on the App's clock, the last 100 events made of Tube's lines without `tube: `, sanitized), `OutputLen`, `OutputRange`, `Input` (`AppInputFailed`), `ResizeOutput` (kept for a later Start too), `Disconnect`, `Switch` (dial first, then `session.Use`; a failed dial changes nothing), `Stop`, and `Finish` (stops, waits, closes the terminal, waits for the goroutines; `Close` calls it). The notifications of the output, the session, the events and the sampler are joined: at most one each 50 ms. `Connect` and `Switch` share one dial (logging, marking as used, remembering the user name); `Run` and `Start` share `takeTunnel`. The `Application` interface and `apptest.Fake` have the new methods (`Running()`, `Typed`, `Size`); `vpntest.ServerOptions` has `Subnet`.
+- Checks: `scripts/checks.sh` passed, with the tests against the real server (`TestSwitch`, `TestSwitchToAWrongPassword`, `TestSwitchAfterDisconnect`, `TestServerSubnet`). The App's tests passed three times in a row with the race detector.
+- Proofs: none (the step has no proof; the tests are its proof). No openvpn, tmux or tube process was left.
+- Manual checks: none
+- Differences from the plan or the spec:
+  - SIGTERM and SIGHUP are now followed by SIGKILL five seconds later in the App (`killLater`), for `Stop` and for the signals of `--profile`, as SPEC §10 says; until now the keeper passed SIGTERM on and nothing followed it. `TestStopKills` shows it with a probe that ignores SIGTERM and a short delay.
+  - `Finish` without `Start` returns 0 and no error (there is nothing to finish), so that `AppNotStarted` is created in one place, `Switch`.
+  - The routes of `AppNotConnected` and `AppNoTarget` now go through `App.takeTunnel` (`App.Run->App.takeTunnel.AppNotConnected`), since each Tag is created in one place.
+  - `TestSwitch` cannot show the refusal by a ping of the first server through the second tunnel: both test servers live in the namespace of `scripts/vpn-ns.sh`, whose kernel owns both tunnel addresses and answers either. It shows instead that the first server was told that the client left (`exit message received by peer`), and the refusal of the network after a disconnect is shown by `TestSwitchAfterDisconnect` (no answer).
+  - `Finish` waits one second at most for the last output before it closes the terminal, so that a program the application left behind with the terminal does not keep Tube waiting.

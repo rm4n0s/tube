@@ -44,7 +44,13 @@ type ServerOptions struct {
 	Password string
 	// PushIPv6 also gives the clients an IPv6 address, of fd00:8::/64.
 	PushIPv6 bool
+	// Subnet is the IPv4 network of the tunnel, a /24; the zero value is 10.8.0.0/24. The
+	// server is the first address of it.
+	Subnet netip.Prefix
 }
+
+// defaultSubnet is the IPv4 network of a tunnel when ServerOptions.Subnet is not set.
+var defaultSubnet = netip.MustParsePrefix("10.8.0.0/24")
 
 // Server is a running OpenVPN server on the loopback of the namespace of scripts/vpn-ns.sh.
 type Server struct {
@@ -52,6 +58,7 @@ type Server struct {
 	dir     string
 	args    []string
 	profile string
+	subnet  netip.Prefix
 
 	mu       sync.Mutex
 	cmd      *exec.Cmd
@@ -73,6 +80,13 @@ func StartServer(t testing.TB, opts ServerOptions) *Server {
 	proto := opts.Proto
 	if proto == "" {
 		proto = "udp"
+	}
+	subnet := opts.Subnet
+	if !subnet.IsValid() {
+		subnet = defaultSubnet
+	}
+	if !subnet.Addr().Is4() || subnet.Bits() != 24 || subnet.Masked() != subnet {
+		t.Fatalf("vpntest: Subnet is %v, want an IPv4 /24 network", opts.Subnet)
 	}
 	if proto != "udp" && proto != "tcp" {
 		t.Fatalf("vpntest: Proto is %q, want udp or tcp", opts.Proto)
@@ -99,7 +113,7 @@ func StartServer(t testing.TB, opts ServerOptions) *Server {
 		extra = append(extra, authArgs(t, dir, opts.Username, opts.Password)...)
 	}
 
-	s := &Server{t: t, dir: dir}
+	s := &Server{t: t, dir: dir, subnet: subnet}
 	t.Cleanup(s.Stop)
 	for attempt := 1; ; attempt++ {
 		port := freePort(t, proto)
@@ -109,7 +123,7 @@ func StartServer(t testing.TB, opts ServerOptions) *Server {
 			"--dev", fmt.Sprintf("tt%dx%d", os.Getpid(), devCounter.Add(1)%1000),
 			"--dev-type", "tun",
 			"--topology", "subnet",
-			"--server", "10.8.0.0", "255.255.255.0",
+			"--server", subnet.Addr().String(), "255.255.255.0",
 			"--proto", proto,
 			"--local", "127.0.0.1",
 			"--port", strconv.Itoa(port),
@@ -230,7 +244,7 @@ func (s *Server) launch() string {
 func (s *Server) ProfilePath() string { return s.profile }
 
 // TunnelAddr is the server's own address inside the tunnel.
-func (s *Server) TunnelAddr() netip.Addr { return netip.MustParseAddr("10.8.0.1") }
+func (s *Server) TunnelAddr() netip.Addr { return s.subnet.Addr().Next() }
 
 // TunnelAddr6 is the server's own IPv6 address inside the tunnel, or the zero Addr when it
 // gives no IPv6.

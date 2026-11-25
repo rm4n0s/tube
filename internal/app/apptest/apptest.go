@@ -28,11 +28,16 @@ type Fake struct {
 	// Block maps a method's name to a channel: the method waits for it to be closed, or for its
 	// context to end.
 	Block map[string]chan struct{}
+	// Run is what RunState returns; Out are the lines of the output, numbered from 0.
+	Run app.RunState
+	Out []string
 
-	mu      sync.Mutex
-	calls   []string
-	subs    map[int]func()
-	nextSub int
+	mu         sync.Mutex
+	calls      []string
+	typed      []byte
+	cols, rows int
+	subs       map[int]func()
+	nextSub    int
 }
 
 var _ app.Application = (*Fake)(nil)
@@ -55,6 +60,32 @@ func Sample() *Fake {
 			{ID: "id-long", Name: long, Remotes: []string{"far.example.org:1194 udp"}, LastUsed: SampleTime.Add(-40 * 24 * time.Hour)},
 		},
 	}}
+}
+
+// Running is the sample with a started application: firefox running through Work, connected
+// for 12 minutes and 31 seconds at SampleTime, with traffic, four events and 40 lines of
+// output.
+func Running() *Fake {
+	f := Sample()
+	at := func(h, m, s int) time.Time { return time.Date(2026, 11, 25, h, m, s, 0, time.UTC) }
+	f.Run = app.RunState{
+		Started: true, AppName: "firefox", AppRunning: true, State: "connected", Since: at(11, 47, 29),
+		ProfileID: "id-work", ProfileName: "Work", Addrs: []string{"10.8.0.2/24"}, DNS: []string{"10.0.0.53"}, MTU: 1500,
+		Down:    app.Traffic{Bytes: 1_500_000_000, Packets: 1_100_000, Rate: 1_200_000},
+		Up:      app.Traffic{Bytes: 80_000_000, Packets: 400_000, Rate: 80_000},
+		Dropped: 3,
+		Events: []app.Event{
+			{Time: at(11, 40, 0), Text: "connected to Home; running firefox"},
+			{Time: at(11, 44, 0), Text: "the VPN connection ended (the server did not answer); the application has no network; connecting again…"},
+			{Time: at(11, 44, 2), Text: "connected again"},
+			{Time: at(11, 47, 29), Text: "now using Work"},
+		},
+		Now: SampleTime,
+	}
+	for i := range 40 {
+		f.Out = append(f.Out, fmt.Sprintf("firefox: line %d of the output", i+1))
+	}
+	return f
 }
 
 // Empty has no profile and no target.
@@ -179,4 +210,84 @@ func (f *Fake) Connect(ctx context.Context, id string, creds *app.Credentials, r
 		return f.call(ctx, "Connect", id, "nil", remember)
 	}
 	return f.call(ctx, "Connect", id, creds.Username, "***", remember)
+}
+
+// Start records the call.
+func (f *Fake) Start(ctx context.Context) error { return f.call(ctx, "Start") }
+
+// RunState returns Run.
+func (f *Fake) RunState() app.RunState {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.Run
+}
+
+// OutputLen is the numbers of the lines of Out.
+func (f *Fake) OutputLen() (first, end int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return 0, len(f.Out)
+}
+
+// OutputRange returns the lines of Out from from to to, as far as there are some.
+func (f *Fake) OutputRange(from, to int) []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	from, to = max(from, 0), min(to, len(f.Out))
+	if from >= to {
+		return nil
+	}
+	return slices.Clone(f.Out[from:to])
+}
+
+// Input keeps what was typed, or returns the error of Fail.
+func (f *Fake) Input(p []byte) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.Fail["Input"]; err != nil {
+		return err
+	}
+	f.typed = append(f.typed, p...)
+	return nil
+}
+
+// Typed is everything given to Input.
+func (f *Fake) Typed() []byte {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.typed)
+}
+
+// ResizeOutput keeps the size.
+func (f *Fake) ResizeOutput(cols, rows int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.cols, f.rows = cols, rows
+}
+
+// Size is the last size given to ResizeOutput.
+func (f *Fake) Size() (cols, rows int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.cols, f.rows
+}
+
+// Disconnect records the call.
+func (f *Fake) Disconnect() {
+	// A Disconnect has no error to return.
+	_ = f.call(context.Background(), "Disconnect")
+}
+
+// Switch records the call, with the password as "***".
+func (f *Fake) Switch(ctx context.Context, id string, creds *app.Credentials, remember bool) error {
+	if creds == nil {
+		return f.call(ctx, "Switch", id, "nil", remember)
+	}
+	return f.call(ctx, "Switch", id, creds.Username, "***", remember)
+}
+
+// Stop records the call.
+func (f *Fake) Stop() {
+	// A Stop has no error to return.
+	_ = f.call(context.Background(), "Stop")
 }
