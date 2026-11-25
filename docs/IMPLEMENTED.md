@@ -122,3 +122,15 @@ The log of the finished steps of `docs/IMPLEMENTATION.md`, in order (its rule 11
   - More Tags, each tested: `KeeperResolvLinkFailed` (a loop of links), `KeeperNoTempDir` (a file must be mounted and `Options.TempDir` is empty).
   - `writeResolv` writes with `os.WriteFile`, which truncates and writes the same file, so the bind-mounted file keeps its inode (trap 16).
   - The tests of `dnstest` compare the bytes with ones written by hand: `golang.org/x/net/dns/dnsmessage` is not an allowed dependency.
+
+## Step 2.5: Signals and the ways an application ends
+- Date: 2026-11-25
+- What was done: the keeper catches SIGINT and SIGQUIT and drops them, passes SIGTERM and SIGHUP on to the application, sends the signal of a `signal` message, and when the socket closes ends the application with SIGTERM and, after the kill delay, SIGKILL. `Sandbox.Signal`; `Options.Terminal` (the application leads a new session on its own terminal); `LookPath` and `ExitCodeOf`; `internal/core/pty` (`Open`, `SetSize`); the probes `stubborn` and `sigint`.
+- Checks: `scripts/checks.sh` passed, with the tests against the real server (the tests of `sandbox` and `pty` pass inside `scripts/vpn-ns.sh` too). After every test of the signals, no child of the test process is left.
+- Proofs: none
+- Manual checks: none
+- Differences from the plan or the spec:
+  - `LookPath` of a name with a slash only makes it absolute (`filepath.Abs`): `exec.LookPath` would refuse a file that cannot be executed as "not found" (127), and the shell's answer for it is 126, which the keeper gives (`SandboxAppNotExecutable`). A name found in a relative folder of `PATH` (`exec.ErrDot`) is not found. The cause of `SandboxLookPathFailed` is not kept: its text has the name as it is.
+  - `pty.SetSize` reaches the descriptor through `SyscallConn`, so that the master side stays non-blocking and keeps its deadlines (`File.Fd` would make it blocking); a test asserts it.
+  - `PtyNonblockFailed` is one more Tag. The Tags of `pty.Open` cannot be caused and are in `docs/ERROR-TAGS-UNTESTED.md`.
+  - Tests that the plan does not name: `TestSigtermToTheKeeperIsPassedOn` (SIGHUP to the keeper reaches the application), `TestSetSizeFails`; `TestAppCannotStart` (step 2.3) checks `ExitCodeOf` too. `TestTheKeeperSurvivesCtrlC` sends SIGQUIT as well as SIGINT.

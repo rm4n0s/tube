@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/signal"
 	"slices"
 	"strings"
 	"syscall"
@@ -32,9 +33,11 @@ func HandleProbe() {
 		return
 	}
 	probes := map[string]func(args []string) error{
-		"report": report,
-		"lookup": lookup,
-		"files":  files,
+		"report":   report,
+		"lookup":   lookup,
+		"files":    files,
+		"stubborn": stubborn,
+		"sigint":   sigint,
 	}
 	probe, ok := probes[name]
 	if !ok {
@@ -184,4 +187,29 @@ func files(args []string) error {
 		f.Dirs[dir] = names
 	}
 	return json.NewEncoder(os.Stdout).Encode(f)
+}
+
+// PIDFileVar names the file into which the probe stubborn writes its pid.
+const PIDFileVar = "TUBE_PROBE_PID_FILE"
+
+// stubborn catches SIGTERM and does nothing with it, writes its pid into the file that
+// PIDFileVar names, and sleeps for a minute: only SIGKILL ends it in time.
+func stubborn([]string) error {
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGTERM)
+	go func() {
+		for range sigs {
+		}
+	}()
+	if err := os.WriteFile(os.Getenv(PIDFileVar), []byte(fmt.Sprint(os.Getpid())), 0o600); err != nil {
+		return err
+	}
+	time.Sleep(time.Minute)
+	return nil
+}
+
+// sigint prints whether SIGINT is ignored in the application: "true" or "false".
+func sigint([]string) error {
+	fmt.Println(signal.Ignored(syscall.SIGINT))
+	return nil
 }

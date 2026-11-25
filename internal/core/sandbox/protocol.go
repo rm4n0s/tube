@@ -50,6 +50,7 @@ type message struct {
 	UID      int               `json:"uid,omitempty"`      // run: the user's own uid
 	GID      int               `json:"gid,omitempty"`      // run: the user's own gid
 	KillMS   int               `json:"kill_ms,omitempty"`  // run: the delay before SIGKILL
+	Terminal bool              `json:"terminal,omitempty"` // run: the application gets its own terminal
 	PID      int               `json:"pid,omitempty"`      // started
 	Signal   int               `json:"signal,omitempty"`   // signal; exited by a signal
 	Code     int               `json:"code,omitempty"`     // exited

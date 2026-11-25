@@ -73,6 +73,10 @@ type Options struct {
 	StepTimeout time.Duration
 	// KillDelay is the time between SIGTERM and SIGKILL to the application; 0 is 5 seconds.
 	KillDelay time.Duration
+	// Terminal makes the application the leader of a new session whose controlling terminal
+	// is Stdin, which must then be a terminal (the slave side of a pty). Without it the
+	// application stays in Tube's session and process group, on Tube's terminal.
+	Terminal bool
 	// TempDir is a folder of Tube's for the keeper's files (a resolv.conf that is mounted
 	// over the machine's); "" when there is none, which works only on a machine whose
 	// resolv.conf leads into a folder that the keeper covers (docs/SPEC.md §8.4).
@@ -105,6 +109,8 @@ type Sandbox struct {
 	// reqMu lets one request be in flight; seq is the number of the last one.
 	reqMu sync.Mutex
 	seq   int
+	// appPID is the application's pid once it started.
+	appPID int
 
 	closeOnce sync.Once
 	closeErr  error
@@ -370,13 +376,14 @@ func (s *Sandbox) configure(ctx context.Context, nm networkMessage) ([]string, e
 
 // Run starts the application, as the user who runs Tube, and returns when it has started.
 func (s *Sandbox) Run(ctx context.Context) error {
-	run := message{Type: msgRun, UID: os.Getuid(), GID: os.Getgid(), KillMS: int(s.opts.KillDelay / time.Millisecond)}
+	run := message{Type: msgRun, UID: os.Getuid(), GID: os.Getgid(), KillMS: int(s.opts.KillDelay / time.Millisecond), Terminal: s.opts.Terminal}
 	m, _, err := s.exchange(ctx, &run, msgStarted)
 	if err != nil {
 		return err
 	}
 	switch {
 	case m.Type == msgStarted:
+		s.appPID = m.PID
 		return nil
 	case m.Tag == TagKeeperAppNotFound:
 		return errors.New(TagAppNotFound, "the application was not found", keeperMeta(m)...)
@@ -384,6 +391,17 @@ func (s *Sandbox) Run(ctx context.Context) error {
 		return errors.New(TagAppNotExecutable, "the application cannot be executed", keeperMeta(m)...)
 	}
 	return errors.New(TagRunFailed, "the application cannot be started", keeperMeta(m)...)
+}
+
+// Signal sends the signal to the application. It needs no answer, and after the application
+// has ended it does nothing.
+func (s *Sandbox) Signal(sig syscall.Signal) error {
+	select {
+	case <-s.appExited:
+		return nil
+	default:
+	}
+	return send(s.conn, message{Type: msgSignal, Signal: int(sig)}, -1)
 }
 
 // Wait waits until the application has ended and says how it ended. It fails when the keeper
@@ -408,8 +426,9 @@ func (s *Sandbox) Wait() (ExitStatus, error) {
 func (s *Sandbox) Device() *os.File { return s.device }
 
 // Close ends the namespace: it closes the socket and the device, and waits for the keeper,
-// which ends when its socket closes; one that does not end within the step's timeout is
-// killed. A second call returns what the first returned.
+// which ends when its socket closes, after it has ended the application (SIGTERM, and SIGKILL
+// after the kill delay); a keeper that does not end within the kill delay and the step's
+// timeout is killed. A second call returns what the first returned.
 func (s *Sandbox) Close() error {
 	s.closeOnce.Do(func() { s.closeErr = s.close() })
 	return s.closeErr

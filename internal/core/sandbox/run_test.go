@@ -390,17 +390,22 @@ func TestAppCannotStart(t *testing.T) {
 	}
 	tests := []struct {
 		name, path, route, keeper string
+		status                    int
 	}{
-		{"not found", "/nonexistent/app", "Sandbox.Run.SandboxAppNotFound", "keeper.startApp.KeeperAppNotFound"},
-		{"a file that is not executable", text, "Sandbox.Run.SandboxAppNotExecutable", "keeper.startApp.KeeperAppNotExecutable"},
-		{"a folder", dir, "Sandbox.Run.SandboxAppNotExecutable", "keeper.startApp.KeeperAppNotExecutable"},
+		{"not found", "/nonexistent/app", "Sandbox.Run.SandboxAppNotFound", "keeper.startApp.KeeperAppNotFound", 127},
+		{"a file that is not executable", text, "Sandbox.Run.SandboxAppNotExecutable", "keeper.startApp.KeeperAppNotExecutable", 126},
+		{"a folder", dir, "Sandbox.Run.SandboxAppNotExecutable", "keeper.startApp.KeeperAppNotExecutable", 126},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			r := startSandbox(t, tt.path, []string{"app"})
 			r.configure(t, network4)
-			meta := errtest.Route(t, r.s.Run(context.Background()), tt.route)
+			err := r.s.Run(context.Background())
+			meta := errtest.Route(t, err, tt.route)
 			keeperRoute(t, meta, tt.keeper)
+			if got := ExitCodeOf(err); got != tt.status {
+				t.Errorf("ExitCodeOf = %d, want %d", got, tt.status)
+			}
 		})
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -26,6 +27,9 @@ const KeeperArg0 = "tube-keeper"
 
 // keeperFD is the descriptor of the keeper's end of the socket: the first of ExtraFiles.
 const keeperFD = 3
+
+// maxSignal is the largest signal number that Tube may ask the keeper to send.
+const maxSignal = 64
 
 // The Tags of the keeper's errors, which reach Tube in a message of type failed.
 const (
@@ -105,6 +109,11 @@ func (k *keeper) fail(err error) int {
 // run makes the namespace ready, hands the device to Tube and serves Tube's messages until
 // the socket is closed or the application has ended.
 func (k *keeper) run() int {
+	// The signals of the terminal reach the application directly: the keeper only must not die
+	// of them. SIGTERM and SIGHUP are passed on to the application. They are caught, never
+	// ignored: an ignored signal would stay ignored in the application (trap 13).
+	sigs := make(chan os.Signal, 8)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM, syscall.SIGHUP)
 	// Nothing that the keeper mounts may be seen outside its mount namespace.
 	if err := unix.Mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
 		return k.fail(errors.NewErr(TagKeeperMountFailed, err))
@@ -141,6 +150,10 @@ func (k *keeper) run() int {
 				return 1 // Tube learns it from the socket closing: the keeper is lost
 			}
 			return k.exited(state)
+		case sig := <-sigs:
+			if sig == syscall.SIGTERM || sig == syscall.SIGHUP {
+				k.signalApp(sig.(syscall.Signal))
+			}
 		}
 	}
 }
@@ -168,9 +181,23 @@ func (k *keeper) closeNetlink() {
 	}
 }
 
-// handle answers one message of Tube. An error is returned only when the answer cannot be
-// sent.
+// signalApp sends the signal to the application, when one runs.
+func (k *keeper) signalApp(sig syscall.Signal) {
+	if k.app != nil {
+		// An application that has just ended cannot get it, and needs not.
+		_ = k.app.Process.Signal(sig)
+	}
+}
+
+// handle answers one message of Tube; a signal needs no answer. An error is returned only when
+// the answer cannot be sent.
 func (k *keeper) handle(m message) error {
+	if m.Type == msgSignal {
+		if m.Signal > 0 && m.Signal <= maxSignal {
+			k.signalApp(syscall.Signal(m.Signal))
+		}
+		return nil
+	}
 	var err error
 	answer := message{Seq: m.Seq}
 	switch m.Type {
@@ -230,6 +257,10 @@ func (k *keeper) startApp(m message) (int, error) {
 		GidMappings:                []syscall.SysProcIDMap{{ContainerID: m.GID, HostID: 0, Size: 1}},
 		GidMappingsEnableSetgroups: false,
 	}
+	if m.Terminal {
+		// The leader of a new session, whose controlling terminal is its standard input.
+		cmd.SysProcAttr.Setsid, cmd.SysProcAttr.Setctty, cmd.SysProcAttr.Ctty = true, true, 0
+	}
 	if err := cmd.Start(); err != nil {
 		switch {
 		case errors.Is(err, syscall.ENOENT):
@@ -241,6 +272,9 @@ func (k *keeper) startApp(m message) (int, error) {
 	}
 	k.app = cmd
 	k.killDelay = time.Duration(m.KillMS) * time.Millisecond
+	if k.killDelay <= 0 {
+		k.killDelay = defaultKillDelay
+	}
 	k.appEnded = make(chan *os.ProcessState, 1)
 	go func() {
 		// The state says how it ended; an error with no state means it cannot be known.
@@ -268,13 +302,18 @@ func (k *keeper) exited(state *os.ProcessState) int {
 }
 
 // endApp ends the application, when one runs, and waits for it: Tube is gone, and nothing of
-// the namespace may stay behind.
+// the namespace may stay behind. SIGTERM first, and SIGKILL after the kill delay.
 func (k *keeper) endApp() {
 	if k.app == nil {
 		return
 	}
-	// TODO(step 2.5): SIGTERM first, and SIGKILL after the kill delay.
-	// A kill of an application that just ended fails; the wait below is what matters.
+	// A signal to an application that just ended fails; the waits below are what matter.
+	_ = k.app.Process.Signal(syscall.SIGTERM)
+	select {
+	case <-k.appEnded:
+		return
+	case <-time.After(k.killDelay):
+	}
 	_ = k.app.Process.Kill()
 	<-k.appEnded
 }
