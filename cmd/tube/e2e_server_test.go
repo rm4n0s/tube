@@ -8,11 +8,13 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"fmt"
 	"net/netip"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -66,6 +68,24 @@ func (e e2e) run(t *testing.T, args ...string) (status int, stdout, stderr strin
 	// The status says how it ended.
 	_ = cmd.Run()
 	return cmd.ProcessState.ExitCode(), out.String(), errOut.String()
+}
+
+// syncBuffer is a buffer that a process writes while the test reads it.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }
 
 // processesWith are the pids of the processes whose command line has text in it.
@@ -191,6 +211,56 @@ func TestEndToEnd(t *testing.T) {
 		}
 		if left := processesWith("sleep\x0031.7\x00"); len(left) > 0 {
 			t.Errorf("the application is left: %v", left)
+		}
+	})
+	t.Run("the server restarts", func(t *testing.T) {
+		e, server := setup(t, bin, vpntest.ServerOptions{})
+		cmd := e.command(t, "--profile", "test", "ping", "-i", "1", "-c", "25", "-W", "1", server.TunnelAddr().String())
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var stderr syncBuffer
+		cmd.Stderr = &stderr
+		if err := cmd.Start(); err != nil {
+			t.Fatal(err)
+		}
+		// The replies, with their numbers, as ping prints them.
+		replies := make(chan int, 64)
+		go func() {
+			defer close(replies)
+			lines := bufio.NewScanner(stdout)
+			for lines.Scan() {
+				var seq int
+				if i := strings.Index(lines.Text(), "icmp_seq="); i >= 0 {
+					if _, err := fmt.Sscanf(lines.Text()[i:], "icmp_seq=%d", &seq); err == nil {
+						replies <- seq
+					}
+				}
+			}
+		}()
+		last := 0
+		for range 3 {
+			last = <-replies
+		}
+		server.Stop()
+		time.Sleep(3 * time.Second)
+		server.Start()
+		after := 0
+		for seq := range replies {
+			if seq > last+1 {
+				after++
+			}
+		}
+		// The status says how it ended; ping counts lost replies as a failure.
+		_ = cmd.Wait()
+		if after == 0 {
+			t.Errorf("no reply came after the server restarted; standard error:\n%s\nthe server's log:\n%s", stderr.String(), server.Log())
+		}
+		for _, want := range []string{"the VPN connection ended", "connected again"} {
+			if !strings.Contains(stderr.String(), want) {
+				t.Errorf("standard error has no %q:\n%s", want, stderr.String())
+			}
 		}
 	})
 	t.Run("nothing is left", func(t *testing.T) {

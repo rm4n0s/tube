@@ -58,23 +58,34 @@ type Options struct {
 	// Sandbox gives Exe, StepTimeout, KillDelay, Stdin, Stdout, Stderr, Terminal and Dir; its
 	// other fields are not read.
 	Sandbox sandbox.Options
+	// Redial connects the same profile again after the tunnel failed (docs/SPEC.md §10, D14);
+	// nil does not connect again.
+	Redial func(ctx context.Context) (vpn.Tunnel, error)
 }
 
 // Session is a running application in its namespace.
 type Session struct {
-	opts    Options
-	log     *slog.Logger
-	name    string
-	tmp     string
-	sb      *sandbox.Sandbox
-	pump    *pump.Pump
-	network vpn.Network
+	opts Options
+	log  *slog.Logger
+	name string
+	tmp  string
+	sb   *sandbox.Sandbox
+
+	// The tunnel and the pump in use. Start sets them; then only the controller (control)
+	// touches them.
+	tunnel vpn.Tunnel
+	pump   *pump.Pump
 
 	linesMu sync.Mutex
 
-	// stopWatch ends the watcher of the pump; watchDone is closed when it has ended.
-	stopWatch chan struct{}
-	watchDone chan struct{}
+	// appEnded is closed when the application has ended: appStatus and appErr say how.
+	appEnded  chan struct{}
+	appStatus sandbox.ExitStatus
+	appErr    error
+	// ctrlDone is closed when the controller has ended, and closed the tunnel and the pump in
+	// use; traffic is what all the pumps moved.
+	ctrlDone chan struct{}
+	traffic  pump.Counters
 
 	waitOnce sync.Once
 	status   int
@@ -88,8 +99,8 @@ func Start(ctx context.Context, opts Options) (*Session, error) {
 		opts.Clock = clock.System()
 	}
 	s := &Session{
-		opts: opts, log: opts.Logger, name: sanitize.Display(opts.ProfileName, maxNameInEnv),
-		stopWatch: make(chan struct{}), watchDone: make(chan struct{}),
+		opts: opts, log: opts.Logger, name: sanitize.Display(opts.ProfileName, maxNameInEnv), tunnel: opts.Tunnel,
+		appEnded: make(chan struct{}), ctrlDone: make(chan struct{}),
 	}
 	if s.log == nil {
 		s.log = slog.New(slog.DiscardHandler)
@@ -98,8 +109,15 @@ func Start(ctx context.Context, opts Options) (*Session, error) {
 		s.undo()
 		return nil, err
 	}
-	go s.watch()
+	go s.waitApp()
+	go s.control()
 	return s, nil
+}
+
+// waitApp waits for the end of the application.
+func (s *Session) waitApp() {
+	s.appStatus, s.appErr = s.sb.Wait()
+	close(s.appEnded)
 }
 
 // start does the steps of Start; undo undoes what it made.
@@ -118,16 +136,11 @@ func (s *Session) start(ctx context.Context) error {
 	if s.sb, err = sandbox.Start(ctx, so); err != nil {
 		return err
 	}
-	s.network = s.opts.Tunnel.Network()
-	warnings, err := s.sb.Configure(ctx, s.network, s.opts.DNS)
-	if err != nil {
+	network := s.tunnel.Network()
+	if err := s.configure(ctx, network); err != nil {
 		return err
 	}
-	for _, w := range warnings {
-		s.line(w)
-		s.log.Warn("the names of the namespace", "warning", w)
-	}
-	s.pump = pump.Start(s.sb.Device(), s.opts.Tunnel, s.network.MTU)
+	s.pump = pump.Start(s.sb.Device(), s.tunnel, network.MTU)
 	if err := s.sb.Run(ctx); err != nil {
 		return err
 	}
@@ -136,11 +149,29 @@ func (s *Session) start(ctx context.Context) error {
 		argv0 = sanitize.Display(s.opts.Argv[0], maxNameInEnv)
 	}
 	s.line(fmt.Sprintf("connected to %s; running %s", s.name, argv0))
-	dns := s.opts.DNS
-	if len(dns) == 0 {
-		dns = s.network.DNSServers
+	s.log.Info("the application runs", "profile", s.name, "addrs", network.Addrs, "dns", s.dnsOf(network), "mtu", network.MTU)
+	return nil
+}
+
+// dnsOf are the DNS servers of the namespace with the network: the profile's, else the ones
+// that the server pushed.
+func (s *Session) dnsOf(n vpn.Network) []netip.Addr {
+	if len(s.opts.DNS) > 0 {
+		return s.opts.DNS
 	}
-	s.log.Info("the application runs", "profile", s.name, "addrs", s.network.Addrs, "dns", dns, "mtu", s.network.MTU)
+	return n.DNSServers
+}
+
+// configure configures the namespace for the network, and writes the warnings as lines.
+func (s *Session) configure(ctx context.Context, n vpn.Network) error {
+	warnings, err := s.sb.Configure(ctx, n, s.opts.DNS)
+	if err != nil {
+		return err
+	}
+	for _, w := range warnings {
+		s.line(w)
+		s.log.Warn("the names of the namespace", "warning", w)
+	}
 	return nil
 }
 
@@ -159,9 +190,17 @@ func (s *Session) undo() {
 	s.removeTemp()
 }
 
-// closeTunnel closes the tunnel and logs a failure.
+// closeTunnel closes the tunnel in use and logs a failure.
 func (s *Session) closeTunnel() {
-	if err := s.opts.Tunnel.Close(); err != nil {
+	if s.tunnel != nil {
+		s.closeTunnelOf(s.tunnel)
+		s.tunnel = nil
+	}
+}
+
+// closeTunnelOf closes a tunnel and logs a failure.
+func (s *Session) closeTunnelOf(tun vpn.Tunnel) {
+	if err := tun.Close(); err != nil {
 		s.log.Warn("the tunnel was closed with an error", "err", err)
 	}
 }
@@ -206,25 +245,6 @@ func (s *Session) line(text string) {
 	}
 }
 
-// watch says so when the VPN connection ends while the application runs.
-// TODO(step 4.1): connect again.
-func (s *Session) watch() {
-	defer close(s.watchDone)
-	select {
-	case <-s.pump.Done():
-	case <-s.stopWatch:
-		return
-	}
-	select {
-	case <-s.stopWatch:
-		return // the application has ended: the end of the VPN is the session's own
-	default:
-	}
-	err := s.pump.Err()
-	s.line(fmt.Sprintf("the VPN connection ended (%s); the application has no network", reason(err)))
-	s.log.Warn("the VPN connection ended", "err", err)
-}
-
 // reason is a few words that say why a connection ended, never the error's text.
 func reason(err error) string {
 	switch vpn.KindOf(err) {
@@ -254,13 +274,13 @@ func (s *Session) Wait() (int, error) {
 
 // wait is Wait, once.
 func (s *Session) wait() (int, error) {
-	st, waitErr := s.sb.Wait()
-	close(s.stopWatch)
-	<-s.watchDone
-	c := s.pump.Stop()
+	<-s.appEnded
+	// The controller ends with the application, and closes the pump and the tunnel in use.
+	<-s.ctrlDone
+	st, waitErr := s.appStatus, s.appErr
+	c := s.traffic
 	s.log.Info("the application ended", "status", st.Status(), "to_tunnel_packets", c.ToTunnel.Packets, "to_tunnel_bytes", c.ToTunnel.Bytes,
 		"from_tunnel_packets", c.FromTunnel.Packets, "from_tunnel_bytes", c.FromTunnel.Bytes, "dropped", c.Dropped)
-	s.closeTunnel()
 	if err := s.sb.Close(); err != nil {
 		s.log.Warn("the namespace was closed with an error", "err", err)
 	}

@@ -183,3 +183,15 @@ The log of the finished steps of `docs/IMPLEMENTATION.md`, in order (its rule 11
   - The end-to-end tests are subtests of one `TestEndToEnd`, which builds the binary once into its temporary folder; the last subtest checks that no process with that folder in its command line is left.
   - `App.Signal` keeps a signal that comes while the application is being started (after the line `connected`, before the App holds the session) and passes it on as soon as the session exists: the end-to-end test of SIGTERM found the gap.
   - The manual check of this step needs a profile in the store, which only the TUI (step 5.3) can add for a user.
+
+## Step 4.1: Connect again
+- Date: 2026-11-25
+- What was done: the session's watcher became a controller (`reconnect.go`): one goroutine that owns the tunnel and the pump and selects over the end of the pump, the end of a wait, the result of a redial and the end of the application. When the tunnel fails it says so, waits 1, 2, 4, 8, 15 and then 30 seconds on the session's clock, calls `Options.Redial`, configures the namespace for the new tunnel and starts a new pump (`tube: connected again`); a refused login stops the tries; the end of the application cuts a wait short and cancels a redial in flight (a tunnel that it still returns is closed). `App.Run` gives the session a `Redial` that dials the same profile again with the credentials of `Connect`, which the App keeps in memory until `Close`.
+- Checks: `scripts/checks.sh` passed, with the tests against the real server: under `tube --profile test ping -i 1 -c 25`, the real server stops and starts again three seconds later, and the replies come back through the new connection.
+- Proofs: none
+- Manual checks: none
+- Differences from the plan or the spec:
+  - The probe `ping-twice` of step 2.7 became `ping-steps`, which pings each address of its arguments in turn, each after the test allows it (files `<go>.<i>` and `<ready>.<i>`); `TestReconnect` and `TestNoNetworkBetweenTheTunnels` use it with two and three addresses, and the test of step 2.7 with two. The probe `report` waits for the file of `GoFileVar` when it is set, so that it reports after the reconnect.
+  - `TestReconnect` has two subtests: the pings, and the report of the new address with one default route.
+  - The session keeps the traffic of all its pumps (`traffic`), which the end of the run logs; step 4.2 shows it in the status.
+  - The end-to-end test of the restart is a subtest of `TestEndToEnd`, `the server restarts`.

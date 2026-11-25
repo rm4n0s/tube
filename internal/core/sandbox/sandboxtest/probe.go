@@ -39,7 +39,7 @@ func HandleProbe() {
 		"files":      files,
 		"stubborn":   stubborn,
 		"sigint":     sigint,
-		"ping-twice": pingTwice,
+		"ping-steps": pingSteps,
 		"linger":     linger,
 	}
 	probe, ok := probes[name]
@@ -78,8 +78,12 @@ type ReportRoute struct {
 }
 
 // report prints what the application sees: who it is, where, and the network of the
-// namespace; and it tries to change the routes, which it must not be allowed to do.
+// namespace; and it tries to change the routes, which it must not be allowed to do. When the
+// variable GoFileVar is set, it first waits for that file.
 func report([]string) error {
+	if path := os.Getenv(GoFileVar); path != "" {
+		waitForFile(path)
+	}
 	nl, err := netlink.Open()
 	if err != nil {
 		return err
@@ -240,26 +244,37 @@ func result(ok bool) string {
 	return "failed"
 }
 
-// pingTwice pings the address of its argument once, writes the file of ReadyFileVar, waits
-// (20 seconds at most) for the file of GoFileVar, pings again, and prints
-// "first=<ok|failed> second=<ok|failed>".
-func pingTwice(args []string) error {
-	if len(args) != 1 {
-		fmt.Fprintf(os.Stderr, "sandboxtest: ping-twice takes one address, not %q\n", args)
+// pingSteps pings each address of its arguments in turn, once. Before the ping number i (from
+// 1) but the first, it waits (a minute at most) for the file of GoFileVar with ".<i>" added;
+// after the ping number i it writes the file of ReadyFileVar with ".<i>" added. At the end it
+// prints "1=<ok|failed> 2=<ok|failed> ...".
+func pingSteps(args []string) error {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "sandboxtest: ping-steps takes addresses")
 		os.Exit(2)
 	}
-	first := pingOnce(args[0])
-	if err := os.WriteFile(os.Getenv(ReadyFileVar), []byte("ready"), 0o600); err != nil {
-		return err
-	}
-	for deadline := time.Now().Add(20 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
-		if _, err := os.Stat(os.Getenv(GoFileVar)); err == nil {
-			break
+	var results []string
+	for i, addr := range args {
+		step := fmt.Sprint(i + 1)
+		if i > 0 {
+			waitForFile(os.Getenv(GoFileVar) + "." + step)
+		}
+		results = append(results, step+"="+result(pingOnce(addr)))
+		if err := os.WriteFile(os.Getenv(ReadyFileVar)+"."+step, []byte("ready"), 0o600); err != nil {
+			return err
 		}
 	}
-	second := pingOnce(args[0])
-	fmt.Printf("first=%s second=%s\n", result(first), result(second))
+	fmt.Println(strings.Join(results, " "))
 	return nil
+}
+
+// waitForFile waits, a minute at most, until the file exists.
+func waitForFile(path string) {
+	for deadline := time.Now().Add(time.Minute); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		if _, err := os.Stat(path); err == nil {
+			return
+		}
+	}
 }
 
 // linger catches SIGTERM and does nothing with it, writes "ready <pid>" into the file of

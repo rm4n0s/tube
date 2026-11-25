@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/tube/internal/core/clock"
@@ -64,9 +65,12 @@ type App struct {
 	logCloser io.Closer
 
 	mu sync.Mutex
-	// tunnel is connected and not given to a session yet; profile is its profile.
+	// tunnel is connected and not given to a session yet; profile is its profile, and creds
+	// are the credentials of the connect, kept in memory only, for connecting again, until
+	// Close.
 	tunnel  vpn.Tunnel
 	profile profiles.Profile
+	creds   *vpn.Credentials
 	// session runs the application; running is set while Run runs, and pending is a signal
 	// that came before the session could take it.
 	session *session.Session
@@ -98,11 +102,12 @@ func Open(ctx context.Context, opts Options) (*App, error) {
 	return a, nil
 }
 
-// Close closes what is open: a tunnel that was connected and never run, and the log.
+// Close closes what is open: a tunnel that was connected and never run, and the log. It forgets
+// the credentials.
 func (a *App) Close() error {
 	a.mu.Lock()
 	tun := a.tunnel
-	a.tunnel = nil
+	a.tunnel, a.creds = nil, nil
 	a.mu.Unlock()
 	if tun != nil {
 		if err := tun.Close(); err != nil {
@@ -173,7 +178,7 @@ func (a *App) connect(ctx context.Context, id string, creds *Credentials, rememb
 		return err
 	}
 	a.mu.Lock()
-	a.tunnel, a.profile = tun, p
+	a.tunnel, a.profile, a.creds = tun, p, vc
 	a.mu.Unlock()
 	n := tun.Network()
 	a.log.Info("connected", "profile", p.ID, "name", p.Name, "addrs", n.Addrs, "dns", n.DNSServers, "mtu", n.MTU)
@@ -214,7 +219,7 @@ func (a *App) setTunnel(tun vpn.Tunnel, p profiles.Profile) {
 // application cannot be started, the tunnel is closed.
 func (a *App) Run(ctx context.Context) (int, error) {
 	a.mu.Lock()
-	tun, p := a.tunnel, a.profile
+	tun, p, creds := a.tunnel, a.profile, a.creds
 	a.tunnel = nil
 	a.mu.Unlock()
 	if tun == nil {
@@ -240,7 +245,7 @@ func (a *App) Run(ctx context.Context) (int, error) {
 	}()
 	s, err := session.Start(ctx, session.Options{
 		Tunnel: tun, Dirs: a.dirs, Path: path, Argv: a.opts.Argv, ProfileName: p.Name, DNS: p.DNS,
-		Logger: a.log, Lines: a.opts.Lines, Clock: a.opts.Clock,
+		Logger: a.log, Lines: a.opts.Lines, Clock: a.opts.Clock, Redial: a.redialer(p.ID, creds),
 	})
 	if err != nil {
 		// session.Start closed the tunnel.
@@ -261,6 +266,23 @@ func (a *App) Run(ctx context.Context) (int, error) {
 	}
 	a.log.Info("run ended", "profile", p.ID, "status", status)
 	return status, nil
+}
+
+// redialTimeout is how long one try to connect again may take.
+const redialTimeout = 60 * time.Second
+
+// redialer is the Redial of a session: it connects the same profile again, with the credentials
+// of the connect.
+func (a *App) redialer(id string, creds *vpn.Credentials) func(ctx context.Context) (vpn.Tunnel, error) {
+	return func(ctx context.Context) (vpn.Tunnel, error) {
+		ctx, cancel := context.WithTimeout(ctx, redialTimeout)
+		defer cancel()
+		p, err := a.store.Get(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		return vpn.Dial(ctx, p, creds)
+	}
 }
 
 // closeTunnelOf closes a tunnel that Run took and could not use.

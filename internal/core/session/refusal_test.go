@@ -91,21 +91,43 @@ func TestNoNetworkBeforeThePump(t *testing.T) {
 
 func TestNoNetworkAfterTheTunnelEnded(t *testing.T) {
 	lookPath(t, "ping")
-	dir := t.TempDir()
-	ready, goOn := filepath.Join(dir, "ready"), filepath.Join(dir, "go")
 	tun := pingTunnel(network)
-	path, argv := probe(t, "10.9.0.1")
+	path, argv := probe(t, "10.9.0.1", "10.9.0.1")
 	opts, r := options(t, tun, path, argv)
-	opts.ExtraEnv = []string{sandboxtest.ProbeEnv("ping-twice"), sandboxtest.ReadyFileVar + "=" + ready, sandboxtest.GoFileVar + "=" + goOn}
+	steps := pingSteps(t, &opts)
 	r = start(t, opts, r)
-	waitFile(t, ready, 10*time.Second)
+	steps.ready(t, 1)
 	tun.Fail(io.EOF)
-	if err := os.WriteFile(goOn, []byte("go"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	steps.goOn(t, 2)
 	r.wait(t)
-	if out := strings.TrimSpace(read(t, r.stdout)); out != "first=ok second=failed" {
+	if out := strings.TrimSpace(read(t, r.stdout)); out != "1=ok 2=failed" {
 		t.Errorf("the probe printed %q:\n%s", out, read(t, r.stderr))
+	}
+}
+
+// steps are the files through which a test and the probe ping-steps talk.
+type steps struct{ readyFile, goFile string }
+
+// pingSteps makes the probe of the options ping-steps, with files of the test.
+func pingSteps(t *testing.T, opts *Options) steps {
+	t.Helper()
+	dir := t.TempDir()
+	st := steps{filepath.Join(dir, "ready"), filepath.Join(dir, "go")}
+	opts.ExtraEnv = append(opts.ExtraEnv, sandboxtest.ProbeEnv("ping-steps"), sandboxtest.ReadyFileVar+"="+st.readyFile, sandboxtest.GoFileVar+"="+st.goFile)
+	return st
+}
+
+// ready waits until the probe has done the ping number i.
+func (st steps) ready(t *testing.T, i int) {
+	t.Helper()
+	waitFile(t, st.readyFile+"."+strconv.Itoa(i), 20*time.Second)
+}
+
+// goOn lets the probe do the ping number i.
+func (st steps) goOn(t *testing.T, i int) {
+	t.Helper()
+	if err := os.WriteFile(st.goFile+"."+strconv.Itoa(i), []byte("go"), 0o600); err != nil {
+		t.Fatal(err)
 	}
 }
 
