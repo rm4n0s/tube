@@ -308,3 +308,14 @@ The log of the finished steps of `docs/IMPLEMENTATION.md`, in order (its rule 11
   - The Output tab's keys line after the end is `q: quit · tab: next tab · pgup pgdn: scroll`.
   - `tui.Run` returns the model's result also when its context was cancelled (Bubble Tea returns the model when it was killed), so that `cmd/tube` knows to call `Finish`.
   - At 60×16 the Status tab has no room left for events.
+
+## Step 6.3: The Network tab
+- Date: 2026-11-25
+- What was done: the run screen's third tab, `Network`: the line of what the application has (`<application> uses Work.`, `… has no network: connecting again to Work…`, `… disconnected.`, `… the server refused the login.`, `… has ended.`), and the profiles with `*` and `in use` (or `connecting again…`) for the one in use; the selection starts on it. `enter` switches (through the login page of step 5.5 for a profile with a password, which then switches and goes back to this tab); while it runs, `Connecting to <name>… <N> s   esc cancels`, and `esc` cancels; then `Now using <name>.`, a refused login back on the login page, or the sentence of another error. `enter` on the profile in use says `<application> already uses <name>.`; a broken profile says why; `x` asks `Disconnect? <application> keeps running without network.` (nothing when there is nothing to disconnect); after the end, `enter` and `x` say `<application> has ended.` `q`, `ctrl+c` and `?` as on the Status tab. The help page has the tab's keys.
+- Checks: `scripts/checks.sh` passed, with the tests against the real server, among them `TestDisconnectInTheTUI` (the real binary in a pseudo-terminal: replies on the Output tab; `x`, `y` on the Network tab; no reply for three seconds on the Output tab; `enter` on the profile; replies again). Every golden file was read (the nine `network-*`; the run screen's goldens and `help` changed only in the tabs line and the help's new line).
+- Proofs: `docs/implemented-proof-images/6.3-network.txt` (`ping uses test.`, `>*test … in use`) and `6.3-disconnected.txt` (after `x`, `y`: `ping has no network: disconnected.`, the header `disconnected`); read, and they show what the step describes. No openvpn, tmux, tube or ping process was left.
+- Manual checks: pending, see docs/MANUAL-CHECKS.md (6.3)
+- Differences from the plan or the spec:
+  - The mark of the profile in use is the second character of the row's mark: `>*` when it is also selected, ` *` when not.
+  - `ctrl+c` on a page that the run screen opened (the login page of a switch, the help page) goes back to the run screen instead of quitting, so that the application is never left without the question of §13.11.
+  - The row's last column is no longer padded to 12 cells, so that `connecting again…` fits; the profiles page looks the same.

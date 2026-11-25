@@ -32,6 +32,9 @@ type loginPage struct {
 	focus      int
 	// back is the page that esc goes back to.
 	back page
+	// forSwitch says that enter switches the running application to the profile, in place of
+	// connecting it.
+	forSwitch bool
 }
 
 // startConnect is enter on a profile, with an application to run: the login page for a profile
@@ -44,6 +47,11 @@ func (m Model) startConnect(p app.Profile) (Model, tea.Cmd) {
 	if !p.NeedsPassword {
 		return m.connect(p.ID, p.Name, nil, false, nil)
 	}
+	return m.openLogin(p), nil
+}
+
+// openLogin opens the login page for the profile; esc goes back to the page that is open.
+func (m Model) openLogin(p app.Profile) Model {
 	l := &loginPage{
 		id: p.ID, name: p.Name, remember: true, back: m.page,
 		user: field{limit: maxUsernameLen},
@@ -54,7 +62,7 @@ func (m Model) startConnect(p app.Profile) (Model, tea.Cmd) {
 		l.focus = focusPassword
 	}
 	m.page, m.login = pageLogin, l
-	return m, nil
+	return m
 }
 
 // loginKey handles a key on the login page.
@@ -75,6 +83,9 @@ func (m Model) loginKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 			return m, nil
 		}
 		creds := &app.Credentials{Username: l.user.value(), Password: l.pass.value()}
+		if l.forSwitch {
+			return m.switchTo(l.id, l.name, creds, l.remember, &l)
+		}
 		return m.connect(l.id, l.name, creds, l.remember, &l)
 	default:
 		switch l.focus {

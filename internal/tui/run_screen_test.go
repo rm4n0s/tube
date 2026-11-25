@@ -110,7 +110,7 @@ func TestGoldenRunHeader(t *testing.T) {
 
 func TestTabs(t *testing.T) {
 	h := runHarness(t, apptest.Running(), 100, 30)
-	want := []string{"[Status]  Output", "Status  [Output]", "[Status]  Output"}
+	want := []string{"[Status]  Output  Network", "Status  [Output]  Network", "Status  Output  [Network]", "[Status]  Output  Network"}
 	for i, w := range want {
 		if i > 0 {
 			h.key("tab")
@@ -118,7 +118,7 @@ func TestTabs(t *testing.T) {
 		h.has(w)
 	}
 	h.key("shift+tab")
-	h.has("Status  [Output]")
+	h.has("Status  Output  [Network]")
 }
 
 func TestTheStartFlow(t *testing.T) {
@@ -162,7 +162,7 @@ func TestKeysGoToTheApplication(t *testing.T) {
 	if got := string(f.Typed()); got != "ls\r\x03\x7f\x04\x15\x1b " {
 		t.Errorf("pgup or tab was sent: %q", got)
 	}
-	if h.m().run.tab != tabStatus || h.quit {
+	if h.m().run.tab != tabNetwork || h.quit {
 		t.Error("tab did not change the tab")
 	}
 }

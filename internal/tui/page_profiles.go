@@ -53,6 +53,15 @@ func (m Model) profilesBody() []string {
 // profileRow is one row: "> Name   server   password   last used", or the name and why the
 // profile is broken.
 func (m Model) profileRow(p app.Profile, selected bool) string {
+	row := fit(m.profileRowWith(p, selected, ago(m.now, p.LastUsed)), m.width)
+	if selected {
+		return m.styles.selected.Render(row)
+	}
+	return row
+}
+
+// profileRowWith is a row with last in the last column, neither cut to the width nor styled.
+func (m Model) profileRowWith(p app.Profile, selected bool, last string) string {
 	mark := unselectedMark
 	if selected {
 		mark = selectedMark
@@ -73,11 +82,7 @@ func (m Model) profileRow(p app.Profile, selected bool) string {
 			password = "password"
 		}
 		row = mark + fit(p.Name, m.nameWidth()) + columnGap + fit(server, serverWidth) + columnGap +
-			fit(password, passwordWidth) + columnGap + fit(ago(m.now, p.LastUsed), lastUsedWidth)
-	}
-	row = fit(row, m.width)
-	if selected {
-		return m.styles.selected.Render(row)
+			fit(password, passwordWidth) + columnGap + last
 	}
 	return row
 }

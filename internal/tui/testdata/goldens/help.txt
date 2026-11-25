@@ -8,6 +8,7 @@ Tube   select a profile to run firefox
   Status — tab shift+tab: tabs · q: quit · ?: keys                                                  
   Output — tab shift+tab: tabs · pgup pgdn: scroll · home: oldest · end: follow · other keys: go to 
   the application                                                                                   
+  Network — ↑↓ jk: move · tab shift+tab: tabs · enter: use · x: disconnect · q: quit · ?: keys      
   Field — enter: save · esc: cancel                                                                 
   Question — y: yes · n esc enter: no                                                               
   Keys — any key: close                                                                             
@@ -17,7 +18,6 @@ it.
 Without the VPN the application has no network at all: Tube never lets it use the machine's.        
 A program that hands its work to one that already runs (a second firefox, a terminal's server) is   
 not in the VPN.                                                                                     
-                                                                                                    
                                                                                                     
                                                                                                     
                                                                                                     

@@ -1,5 +1,5 @@
 Tube   firefox through Work   disconnected                  
-[Status]  Output                                            
+[Status]  Output  Network                                   
 ────────────────────────────────────────────────────────────
 Application   firefox, running                              
 VPN           Work, disconnected                            

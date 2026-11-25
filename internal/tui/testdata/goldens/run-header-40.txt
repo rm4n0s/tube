@@ -1,5 +1,5 @@
 Tube   firefox through Work   connected 
-[Status]  Output                        
+[Status]  Output  Network               
 ────────────────────────────────────────
 Application   firefox, running          
 VPN           Work, connected for 00:12…

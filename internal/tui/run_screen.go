@@ -18,11 +18,12 @@ type runTab int
 const (
 	tabStatus runTab = iota
 	tabOutput
+	tabNetwork
 	runTabCount
 )
 
 // tabNames are the names of the tabs, in their order.
-var tabNames = [runTabCount]string{"Status", "Output"}
+var tabNames = [runTabCount]string{"Status", "Output", "Network"}
 
 // runFrameLines are the lines of the run screen around the tab's page: the header, the tabs,
 // two rules, the message and the keys.
@@ -56,6 +57,8 @@ type runScreen struct {
 	hold   int
 	// stopping says that the user asked to stop the application and quit.
 	stopping bool
+	// switching is the switch that runs on the Network tab, or nil.
+	switching *switching
 }
 
 // runPageHeight is the number of lines of a tab's page.
@@ -145,15 +148,22 @@ func (m Model) runKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	m.run = &r
 	name := msg.String()
 	switch name {
-	case "tab":
-		r.tab = (r.tab + 1) % runTabCount
-		return m, m.readRun()
-	case "shift+tab":
-		r.tab = (r.tab + runTabCount - 1) % runTabCount
+	case "tab", "shift+tab":
+		if name == "tab" {
+			r.tab = (r.tab + 1) % runTabCount
+		} else {
+			r.tab = (r.tab + runTabCount - 1) % runTabCount
+		}
+		if r.tab == tabNetwork {
+			m.selectInUse()
+		}
 		return m, m.readRun()
 	}
-	if r.tab == tabOutput {
+	switch r.tab {
+	case tabOutput:
 		return m.outputKey(msg)
+	case tabNetwork:
+		return m.networkKey(name)
 	}
 	switch name {
 	case "q", "ctrl+c":
@@ -204,6 +214,8 @@ func (m Model) runView() string {
 		body = m.statusBody()
 	case tabOutput:
 		body = m.outputBody()
+	case tabNetwork:
+		body = m.networkBody()
 	}
 	if m.ask != nil {
 		body = overlay(body, m.ask.q.box(m.width, m.styles), m.width, m.runPageHeight())
@@ -277,11 +289,18 @@ func (m Model) runFooter() string {
 	if m.ask != nil {
 		return m.footer()
 	}
-	if m.run.tab == tabOutput {
+	p := pageRunStatus
+	switch m.run.tab {
+	case tabOutput:
 		return m.outputFooter()
+	case tabNetwork:
+		if f := m.networkFooter(); f != "" {
+			return f
+		}
+		p = pageRunNetwork
 	}
 	var parts []string
-	for _, b := range footerBindings(pageRunStatus, len(m.snap.Target) > 0) {
+	for _, b := range footerBindings(p, len(m.snap.Target) > 0) {
 		parts = append(parts, m.styles.key.Render(b.keys)+" "+b.what)
 	}
 	return strings.Join(parts, "   ")

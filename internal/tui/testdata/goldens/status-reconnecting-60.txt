@@ -1,5 +1,5 @@
 Tube   firefox through Work   connecting again…             
-[Status]  Output                                            
+[Status]  Output  Network                                   
 ────────────────────────────────────────────────────────────
 Application   firefox, running                              
 VPN           Work, connecting again… (00:00:07)            

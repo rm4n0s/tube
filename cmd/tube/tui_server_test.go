@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -162,4 +164,84 @@ func TestQuitStopsTheApplication(t *testing.T) {
 	if left := processesWith("sleep\x00300"); len(left) > 0 {
 		t.Errorf("the application is left: %v", left)
 	}
+}
+
+// waitForAfter waits until what was read after the first mark bytes, without escape sequences,
+// has want.
+func (r *screenReader) waitForAfter(t *testing.T, mark int, want string) {
+	t.Helper()
+	deadline := time.Now().Add(20 * time.Second)
+	for time.Now().Before(deadline) {
+		if strings.Contains(ansi.Strip(r.buf.String()[mark:]), want) {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("no %q on the screen after byte %d:\n%s", want, mark, ansi.Strip(r.buf.String()[mark:]))
+}
+
+// seqPattern finds the sequence numbers of ping's replies.
+var seqPattern = regexp.MustCompile(`bytes from [0-9.]+: icmp_seq=([0-9]+)`)
+
+// lastReply is the largest sequence number of a reply on the screen so far, or 0.
+func (r *screenReader) lastReply() int {
+	last := 0
+	for _, m := range seqPattern.FindAllStringSubmatch(ansi.Strip(r.buf.String()), -1) {
+		if n, err := strconv.Atoi(m[1]); err == nil && n > last {
+			last = n
+		}
+	}
+	return last
+}
+
+// waitForReply waits until a reply with a sequence number above after is on the screen.
+func (r *screenReader) waitForReply(t *testing.T, after int) int {
+	t.Helper()
+	deadline := time.Now().Add(20 * time.Second)
+	for time.Now().Before(deadline) {
+		if n := r.lastReply(); n > after {
+			return n
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("no reply after %d on the screen:\n%s", after, ansi.Strip(r.buf.String()))
+	return 0
+}
+
+func TestDisconnectInTheTUI(t *testing.T) {
+	p, server := startInTerminal(t, "ping", "-c", "30", "-i", "0.5", "-W", "1", "10.8.0.1")
+	p.screen.waitFor(t, "test")
+	p.press(t, "\r")
+	p.screen.waitFor(t, "[Status]")
+	p.press(t, "\t")
+	p.screen.waitForReply(t, 0)
+	// The Network tab: x, y.
+	p.press(t, "\t")
+	p.screen.waitFor(t, "ping uses test.")
+	p.press(t, "x")
+	p.screen.waitFor(t, "Disconnect?")
+	p.press(t, "y")
+	p.screen.waitFor(t, "has no network: disconnected.")
+	// Back on the Output tab (shift+tab), no reply comes for three seconds.
+	mark := len(p.screen.buf.String())
+	p.press(t, "\x1b[Z")
+	p.screen.waitForAfter(t, mark, "[Output]")
+	time.Sleep(500 * time.Millisecond)
+	before := p.screen.lastReply()
+	time.Sleep(3 * time.Second)
+	if after := p.screen.lastReply(); after != before {
+		t.Fatalf("replies came after the disconnect: %d, then %d", before, after)
+	}
+	// The Network tab again: enter on the profile connects it.
+	p.press(t, "\t")
+	p.screen.waitFor(t, "has no network: disconnected.")
+	p.press(t, "\r")
+	p.screen.waitFor(t, "Now using test.")
+	p.press(t, "\x1b[Z")
+	p.screen.waitForReply(t, before)
+	p.press(t, "\t")
+	p.press(t, "q")
+	p.screen.waitFor(t, "Stop it and quit?")
+	p.press(t, "y")
+	p.wait(t, server)
 }

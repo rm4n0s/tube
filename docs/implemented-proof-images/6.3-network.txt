@@ -1,0 +1,30 @@
+Tube   ping through test   connected 00:00:01   ↓ 0 B/s  ↑ 0 B/s
+Status  Output  [Network]
+────────────────────────────────────────────────────────────────────────────────────────────────────
+ping uses test.
+
+  Name                                    Server                                        Last used
+>*test                                    127.0.0.1:39463 udp                           in use
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+tab shift+tab tabs   enter use   x disconnect   q quit   ? keys

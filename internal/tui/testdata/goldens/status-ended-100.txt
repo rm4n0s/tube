@@ -1,5 +1,5 @@
 Tube   firefox ended (status 1) through Work                                                        
-[Status]  Output                                                                                    
+[Status]  Output  Network                                                                           
 ────────────────────────────────────────────────────────────────────────────────────────────────────
 Application   firefox, ended with status 1                                                          
 VPN           Work, closed when the application ended                                               

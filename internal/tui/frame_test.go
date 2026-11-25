@@ -24,9 +24,9 @@ func TestTooSmall(t *testing.T) {
 func TestEveryLineFits(t *testing.T) {
 	for _, w := range []int{40, 60, 100, 137} {
 		for _, hgt := range []int{10, 30, 50} {
-			for _, page := range []string{"profiles", "help", "add", "question", "profile", "field", "login", "connecting", "status", "output"} {
+			for _, page := range []string{"profiles", "help", "add", "question", "profile", "field", "login", "connecting", "status", "output", "network"} {
 				f := apptest.Sample()
-				if page == "status" || page == "output" {
+				if page == "status" || page == "output" || page == "network" {
 					f = apptest.Running()
 					f.Out = append(f.Out, strings.Repeat("a long line of output ", 20))
 				}
@@ -39,11 +39,14 @@ func TestEveryLineFits(t *testing.T) {
 					h.typeText(strings.Repeat("/a-long-folder-name", 10))
 				case "question":
 					h.key("d")
-				case "status", "output":
+				case "status", "output", "network":
 					h.selectProfile("id-home")
 					h.key("enter")
 					if page == "output" {
 						h.key("tab")
+					}
+					if page == "network" {
+						h.keys("tab", "tab")
 					}
 				case "login":
 					h.keys("down", "enter", "tab", "tab")

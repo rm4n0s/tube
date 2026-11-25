@@ -1,5 +1,5 @@
 Tube   firefox through Work   connected 00:12:31   ↓ 1.2 MB/s  ↑ 80.0 kB/s                          
-[Status]  Output                                                                                    
+[Status]  Output  Network                                                                           
 ────────────────────────────────────────────────────────────────────────────────────────────────────
 Application   firefox, running                                                                      
 VPN           Work, connected for 00:12:31                                                          

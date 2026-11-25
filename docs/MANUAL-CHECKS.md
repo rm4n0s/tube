@@ -61,3 +61,16 @@ go build -o tube ./cmd/tube
 Select the profile and press Enter. Play a video in that Firefox window. Then press Tab, and after that `q`, then `y`.
 
 Expected: the Status tab's rates (`↓` on the first line, and `Received`) move while the video plays; the Output tab shows what Firefox prints; `q`, `y` closes Firefox and Tube ends.
+
+## Step 6.3: switching and disconnecting with Firefox
+
+With two real profiles (of two providers, or two countries of one provider):
+
+```sh
+go build -o tube ./cmd/tube
+./tube firefox -P tube-check --no-remote
+```
+
+Select the first profile and press Enter. In Firefox, open a "what is my IP" page (for example https://ifconfig.me). In Tube, press Tab twice (the Network tab), select the second profile, press Enter, and reload the page. Then press `x`, `y`, and reload the page again.
+
+Expected: the page shows the first VPN's address, then after the switch the second's; after `x` the page does not load; and at no moment does it show the machine's own address.

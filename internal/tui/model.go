@@ -164,6 +164,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.connected(msg)
 	case startedMsg:
 		return m.started(msg)
+	case switchedMsg:
+		return m.switched(msg)
 	case runMsg:
 		return m.ran(msg)
 	case tea.PasteMsg:
@@ -266,6 +268,10 @@ func (m *Model) setNotice(text string) {
 
 // scroll moves the list's window so that the selected row is visible.
 func (m *Model) scroll() {
+	if m.page == pageRun {
+		m.list.window(m.netListHeight())
+		return
+	}
 	m.list.window(m.listHeight())
 }
 
@@ -273,6 +279,11 @@ func (m *Model) scroll() {
 func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	m.message, m.isError = "", false
 	name := msg.String()
+	if name == "ctrl+c" && m.run != nil && m.page != pageRun {
+		// While the application runs, ctrl+c on another page goes back to the run screen.
+		m.page, m.login = pageRun, nil
+		return m, nil
+	}
 	if name == "ctrl+c" && m.page != pageRun {
 		if m.conn != nil {
 			m.conn.cancel()
