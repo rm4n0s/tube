@@ -8,6 +8,6 @@ Every error Tag has a test that asserts its route (CLAUDE.md "Definition of done
 - `ProfileMetaEncodeFailed`: `json.MarshalIndent` of `meta`, a struct of strings, an int and times, cannot fail
 - `ProfileRandomFailed`: `crypto/rand.Read` never returns an error since Go 1.24; it crashes the program instead
 - `SandboxMessageEncodeFailed`: `json.Marshal` of a message, a struct of strings and a map of strings, cannot fail
-- `SandboxReceiveFailed`: `recvmsg` on a socket pair fails only when the socket is closed or the deadline passed, which have their own Tags (`SandboxSocketClosed`, `SandboxKeeperSilent`, `SandboxDeadlineFailed`)
+- `SandboxReceiveFailed`: `recvmsg` on a socket pair fails only when the socket is closed, which has its own Tag (`SandboxSocketClosed`)
 - `SandboxSocketFailed`: `net.FileConn` of a socket of AF_UNIX fails only when the process is out of file descriptors
 - `SandboxSocketPairFailed`: `socketpair(AF_UNIX, SOCK_SEQPACKET)` fails only when the process is out of file descriptors or memory

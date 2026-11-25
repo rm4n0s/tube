@@ -19,6 +19,7 @@ import (
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/tube/internal/core/errtest"
 	"github.com/rm4n0s/tube/internal/core/nstest"
+	"github.com/rm4n0s/tube/internal/core/sandbox/sandboxtest"
 	"golang.org/x/sys/unix"
 )
 
@@ -32,6 +33,7 @@ func TestMain(m *testing.M) {
 	if IsKeeper() {
 		os.Exit(KeeperMain())
 	}
+	sandboxtest.HandleProbe()
 	nstest.Main(m, nil)
 }
 
@@ -107,14 +109,13 @@ func pair(t *testing.T) (*net.UnixConn, *net.UnixConn) {
 }
 
 func TestProtocol(t *testing.T) {
-	soon := func() time.Time { return time.Now().Add(2 * time.Second) }
 	t.Run("a message goes and comes back equal", func(t *testing.T) {
 		a, b := pair(t)
 		want := message{Type: msgFailed, Tag: "X", Text: "text", Meta: map[string]string{"k": "v"}}
 		if err := send(a, want, -1); err != nil {
 			t.Fatal(err)
 		}
-		got, fd, err := receive(b, soon())
+		got, fd, err := receive(b)
 		if err != nil || fd != -1 || got.Type != want.Type || got.Tag != want.Tag || got.Text != want.Text || got.Meta["k"] != "v" {
 			t.Errorf("receive = %+v, %d, %v", got, fd, err)
 		}
@@ -133,7 +134,7 @@ func TestProtocol(t *testing.T) {
 		if err := send(a, message{Type: msgReady}, int(f.Fd())); err != nil {
 			t.Fatal(err)
 		}
-		_, fd, err := receive(b, soon())
+		_, fd, err := receive(b)
 		if err != nil || fd < 0 {
 			t.Fatalf("receive = %d, %v", fd, err)
 		}
@@ -148,17 +149,12 @@ func TestProtocol(t *testing.T) {
 			t.Errorf("the received descriptor is not close-on-exec: %d, %v", flags, err)
 		}
 	})
-	t.Run("the deadline", func(t *testing.T) {
-		_, b := pair(t)
-		_, _, err := receive(b, time.Now().Add(50*time.Millisecond))
-		errtest.Route(t, err, "receive.SandboxKeeperSilent")
-	})
 	t.Run("the other end is closed", func(t *testing.T) {
 		a, b := pair(t)
 		if err := a.Close(); err != nil {
 			t.Fatal(err)
 		}
-		_, _, err := receive(b, soon())
+		_, _, err := receive(b)
 		errtest.Route(t, err, "receive.SandboxSocketClosed")
 	})
 	t.Run("this end is closed", func(t *testing.T) {
@@ -166,15 +162,15 @@ func TestProtocol(t *testing.T) {
 		if err := b.Close(); err != nil {
 			t.Fatal(err)
 		}
-		_, _, err := receive(b, soon())
-		errtest.Route(t, err, "receive.SandboxDeadlineFailed")
+		_, _, err := receive(b)
+		errtest.Route(t, err, "receive.SandboxSocketClosed")
 	})
 	t.Run("bytes that are not JSON", func(t *testing.T) {
 		a, b := pair(t)
 		if _, _, err := a.WriteMsgUnix([]byte("not json"), nil, nil); err != nil {
 			t.Fatal(err)
 		}
-		_, _, err := receive(b, soon())
+		_, _, err := receive(b)
 		meta := errtest.Route(t, err, "receive.SandboxMessageInvalid")
 		if meta["reason"] != "the message is not JSON" {
 			t.Errorf("metadata = %v", meta)
@@ -190,7 +186,7 @@ func TestProtocol(t *testing.T) {
 		if _, _, err := a.WriteMsgUnix([]byte("{}"), unix.UnixRights(int(f.Fd())), nil); err != nil {
 			t.Fatal(err)
 		}
-		_, fd, err := receive(b, soon())
+		_, fd, err := receive(b)
 		errtest.Route(t, err, "receive.SandboxMessageInvalid")
 		if fd != -1 {
 			t.Errorf("the descriptor %d was given back", fd)
@@ -272,10 +268,7 @@ func TestTheNamespaceIsNotTheMachines(t *testing.T) {
 
 func TestUnknownMessage(t *testing.T) {
 	s := start(t, Options{})
-	if err := send(s.conn, message{Type: "nonsense"}, -1); err != nil {
-		t.Fatal(err)
-	}
-	m, _, err := receive(s.conn, time.Now().Add(5*time.Second))
+	m, _, err := s.exchange(context.Background(), &message{Type: "nonsense"}, "nothing")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -300,7 +293,7 @@ func TestKeeperSilent(t *testing.T) {
 		return err
 	}
 	_, err := Start(context.Background(), opts)
-	errtest.Route(t, err, "Start->Sandbox.awaitReady->receive.SandboxKeeperSilent")
+	errtest.Route(t, err, "Start->Sandbox.awaitReady->Sandbox.exchange.SandboxKeeperSilent")
 	if pid == 0 || !processGone(pid) {
 		t.Errorf("the silent keeper (pid %d) still runs", pid)
 	}
@@ -350,7 +343,7 @@ func TestMisbehavingKeepers(t *testing.T) {
 	}
 	t.Run("a message that is not expected", func(t *testing.T) {
 		_, err := Start(context.Background(), fake("protocol"))
-		meta := errtest.Route(t, err, "Start->Sandbox.awaitReady.SandboxProtocolError")
+		meta := errtest.Route(t, err, "Start->Sandbox.awaitReady->Sandbox.exchange.SandboxProtocolError")
 		if meta["type"] != msgStarted {
 			t.Errorf("metadata = %v", meta)
 		}

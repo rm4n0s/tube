@@ -8,10 +8,14 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"sync"
+	"syscall"
 	"time"
 
 	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/tube/internal/core/netlink"
 	"golang.org/x/sys/unix"
 )
 
@@ -23,8 +27,13 @@ const keeperFD = 3
 
 // The Tags of the keeper's errors, which reach Tube in a message of type failed.
 const (
-	TagKeeperMountFailed    = "KeeperMountPrivateFailed"
-	TagKeeperUnknownMessage = "KeeperUnknownMessage"
+	TagKeeperMountFailed      = "KeeperMountPrivateFailed"
+	TagKeeperUnknownMessage   = "KeeperUnknownMessage"
+	TagKeeperAppNotFound      = "KeeperAppNotFound"
+	TagKeeperAppNotExecutable = "KeeperAppNotExecutable"
+	TagKeeperAppStartFailed   = "KeeperAppStartFailed"
+	TagKeeperAlreadyRunning   = "KeeperAlreadyRunning"
+	TagKeeperNoApplication    = "KeeperNoApplication"
 )
 
 // IsKeeper says whether this process was started as the keeper.
@@ -41,7 +50,8 @@ func toText(v any) string { return fmt.Sprint(v) }
 func KeeperMain() int {
 	f := os.NewFile(keeperFD, "tube-keeper-socket")
 	c, err := net.FileConn(f)
-	// The connection has its own copy of the descriptor.
+	// The connection has its own copy of the descriptor, which is close-on-exec: the
+	// application never gets the socket.
 	_ = f.Close()
 	if err != nil {
 		return 2 // there is no socket to tell Tube on
@@ -57,17 +67,40 @@ func KeeperMain() int {
 // keeper is the state of the keeper process.
 type keeper struct {
 	conn *net.UnixConn
+	// sendMu keeps the answers of the loop and the end of the application apart.
+	sendMu sync.Mutex
+	// nl is opened by the first configure and kept.
+	nl *netlink.Conn
+	// app is the application once it started; appEnded gets its state when it ends (nil when
+	// it could not be waited for).
+	app      *exec.Cmd
+	appEnded chan *os.ProcessState
+	// killDelay is the delay of the run message, kept for the end of the application.
+	killDelay time.Duration
+}
+
+// incoming is what the keeper's reader got: a message or the error that ended the reading.
+type incoming struct {
+	m   message
+	err error
+}
+
+// send sends a message to Tube.
+func (k *keeper) send(m message) error {
+	k.sendMu.Lock()
+	defer k.sendMu.Unlock()
+	return send(k.conn, m, -1)
 }
 
 // fail tells Tube about an error and returns the exit status of a keeper that failed.
 func (k *keeper) fail(err error) int {
 	// When even this cannot be sent, Tube learns it from the socket closing.
-	_ = send(k.conn, failedMessage(err), -1)
+	_ = k.send(failedMessage(err, 0))
 	return 1
 }
 
 // run makes the namespace ready, hands the device to Tube and serves Tube's messages until
-// the socket is closed.
+// the socket is closed or the application has ended.
 func (k *keeper) run() int {
 	// Nothing that the keeper mounts may be seen outside its mount namespace.
 	if err := unix.Mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
@@ -83,20 +116,152 @@ func (k *keeper) run() int {
 	if err != nil {
 		return 1
 	}
+	defer k.closeNetlink()
+	in := make(chan incoming)
+	go k.read(in)
 	for {
-		m, received, err := receive(k.conn, time.Time{})
-		if received >= 0 {
-			_ = unix.Close(received) // Tube never sends a descriptor
-		}
-		if err != nil {
-			if appErr, ok := errors.FromError(err); ok && appErr.Tag == TagSocketClosed {
-				return 0
+		select {
+		case got := <-in:
+			if got.err != nil {
+				k.endApp()
+				if appErr, ok := errors.FromError(got.err); ok && appErr.Tag == TagSocketClosed {
+					return 0
+				}
+				return 1
 			}
-			return 1
-		}
-		// TODO(step 2.3): configure and run.
-		if err := send(k.conn, failedMessage(errors.New(TagKeeperUnknownMessage, "the keeper does not know this message", "type", m.Type)), -1); err != nil {
-			return 1
+			if err := k.handle(got.m); err != nil {
+				k.endApp()
+				return 1
+			}
+		case state := <-k.appEnded:
+			if state == nil {
+				return 1 // Tube learns it from the socket closing: the keeper is lost
+			}
+			return k.exited(state)
 		}
 	}
+}
+
+// read hands every message of Tube to the loop, and then the error that ended the reading. It
+// ends with the keeper's process.
+func (k *keeper) read(in chan<- incoming) {
+	for {
+		m, fd, err := receive(k.conn)
+		if fd >= 0 {
+			_ = unix.Close(fd) // Tube never sends a descriptor
+		}
+		in <- incoming{m, err}
+		if err != nil {
+			return
+		}
+	}
+}
+
+// closeNetlink closes the netlink socket when there is one; the keeper is ending, so a failure
+// changes nothing.
+func (k *keeper) closeNetlink() {
+	if k.nl != nil {
+		_ = k.nl.Close()
+	}
+}
+
+// handle answers one message of Tube. An error is returned only when the answer cannot be
+// sent.
+func (k *keeper) handle(m message) error {
+	var err error
+	answer := message{Seq: m.Seq}
+	switch m.Type {
+	case msgConfigure:
+		answer.Type = msgConfigured
+		err = k.configure(m)
+	case msgRun:
+		answer.Type = msgStarted
+		answer.PID, err = k.startApp(m)
+	default:
+		err = errors.New(TagKeeperUnknownMessage, "the keeper does not know this message", "type", m.Type)
+	}
+	if err != nil {
+		answer = failedMessage(err, m.Seq)
+	}
+	return k.send(answer)
+}
+
+// configure sets the network of the namespace to the one of the message.
+func (k *keeper) configure(m message) error {
+	n, err := parseNetwork(m.Network)
+	if err != nil {
+		return err
+	}
+	if k.nl == nil {
+		nl, err := netlink.Open()
+		if err != nil {
+			return err
+		}
+		k.nl = nl
+	}
+	// TODO(step 2.4): the names.
+	return configureNetwork(k.nl, n)
+}
+
+// startApp starts the application that the keeper was started with, in a nested user
+// namespace where it is the user again and has no rights over the network (trap 18), and
+// returns its pid.
+func (k *keeper) startApp(m message) (int, error) {
+	if k.app != nil {
+		return 0, errors.New(TagKeeperAlreadyRunning, "the application has been started already", "pid", k.app.Process.Pid)
+	}
+	if len(os.Args) < 2 {
+		return 0, errors.New(TagKeeperNoApplication, "the keeper was started without an application")
+	}
+	cmd := exec.Command(os.Args[1])
+	cmd.Args = os.Args[2:]
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Cloneflags:                 syscall.CLONE_NEWUSER,
+		UidMappings:                []syscall.SysProcIDMap{{ContainerID: m.UID, HostID: 0, Size: 1}},
+		GidMappings:                []syscall.SysProcIDMap{{ContainerID: m.GID, HostID: 0, Size: 1}},
+		GidMappingsEnableSetgroups: false,
+	}
+	if err := cmd.Start(); err != nil {
+		switch {
+		case errors.Is(err, syscall.ENOENT):
+			return 0, errors.NewErr(TagKeeperAppNotFound, err)
+		case errors.Is(err, syscall.EACCES) || errors.Is(err, syscall.ENOEXEC) || errors.Is(err, syscall.EISDIR):
+			return 0, errors.NewErr(TagKeeperAppNotExecutable, err)
+		}
+		return 0, errors.NewErr(TagKeeperAppStartFailed, err)
+	}
+	k.app = cmd
+	k.killDelay = time.Duration(m.KillMS) * time.Millisecond
+	k.appEnded = make(chan *os.ProcessState, 1)
+	go func() {
+		// The state says how it ended; an error with no state means it cannot be known.
+		_ = cmd.Wait()
+		k.appEnded <- cmd.ProcessState
+	}()
+	return cmd.Process.Pid, nil
+}
+
+// exited tells Tube how the application ended, and returns the keeper's exit status.
+func (k *keeper) exited(state *os.ProcessState) int {
+	m := message{Type: msgExited, Code: state.ExitCode()}
+	if ws, ok := state.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
+		m.Code, m.Signal = 0, int(ws.Signal())
+	}
+	if err := k.send(m); err != nil {
+		return 1
+	}
+	return 0
+}
+
+// endApp ends the application, when one runs, and waits for it: Tube is gone, and nothing of
+// the namespace may stay behind.
+func (k *keeper) endApp() {
+	if k.app == nil {
+		return
+	}
+	// TODO(step 2.5): SIGTERM first, and SIGKILL after the kill delay.
+	// A kill of an application that just ended fails; the wait below is what matters.
+	_ = k.app.Process.Kill()
+	<-k.appEnded
 }

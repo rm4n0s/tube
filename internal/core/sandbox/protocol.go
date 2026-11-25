@@ -8,9 +8,7 @@ import (
 	"encoding/json"
 	"io"
 	"net"
-	"os"
 	"syscall"
-	"time"
 
 	"github.com/rm4n0s/errors"
 	"golang.org/x/sys/unix"
@@ -34,23 +32,41 @@ const (
 // The Tags of the errors of the messages.
 const (
 	TagSocketClosed      = "SandboxSocketClosed"
-	TagKeeperSilent      = "SandboxKeeperSilent"
 	TagMessageInvalid    = "SandboxMessageInvalid"
 	TagMessageTooLarge   = "SandboxMessageTooLarge"
 	TagSendFailed        = "SandboxSendFailed"
 	TagReceiveFailed     = "SandboxReceiveFailed"
-	TagDeadlineFailed    = "SandboxDeadlineFailed"
 	TagMessageEncodeFail = "SandboxMessageEncodeFailed"
 )
 
 // message is one message between Tube and the keeper, sent as JSON in one packet of the
-// socket. A message of type failed carries the Tag, the message and the metadata (as text) of
-// the error that the keeper met.
+// socket. A message of type failed carries the Tag, the route, the message and the metadata
+// (as text) of the error that the keeper met. The keeper answers a request with the request's Seq, so that
+// Tube never takes a late answer for the answer to a later request.
 type message struct {
-	Type string            `json:"type"`
-	Tag  string            `json:"tag,omitempty"`
-	Text string            `json:"text,omitempty"`
-	Meta map[string]string `json:"meta,omitempty"`
+	Type     string            `json:"type"`
+	Seq      int               `json:"seq,omitempty"`
+	Network  *networkMessage   `json:"network,omitempty"`  // configure
+	UID      int               `json:"uid,omitempty"`      // run: the user's own uid
+	GID      int               `json:"gid,omitempty"`      // run: the user's own gid
+	KillMS   int               `json:"kill_ms,omitempty"`  // run: the delay before SIGKILL
+	PID      int               `json:"pid,omitempty"`      // started
+	Signal   int               `json:"signal,omitempty"`   // signal; exited by a signal
+	Code     int               `json:"code,omitempty"`     // exited
+	Warnings []string          `json:"warnings,omitempty"` // configured
+	Tag      string            `json:"tag,omitempty"`      // failed
+	Route    string            `json:"route,omitempty"`    // failed
+	Text     string            `json:"text,omitempty"`     // failed
+	Meta     map[string]string `json:"meta,omitempty"`     // failed
+}
+
+// networkMessage is the network of a configure message: addresses and servers as text, which
+// the keeper parses again.
+type networkMessage struct {
+	Addrs  []string `json:"addrs"`
+	MTU    int      `json:"mtu"`
+	DNS    []string `json:"dns,omitempty"`
+	Search []string `json:"search,omitempty"`
 }
 
 // send sends a message, and with it the file descriptor fd when it is not negative.
@@ -72,19 +88,12 @@ func send(conn *net.UnixConn, m message, fd int) error {
 	return nil
 }
 
-// receive waits for the next message until the deadline (none when it is the zero time). It
-// returns the file descriptor that came with it, or -1; a descriptor that came is
-// close-on-exec and non-blocking.
-func receive(conn *net.UnixConn, deadline time.Time) (message, int, error) {
-	if err := conn.SetReadDeadline(deadline); err != nil {
-		return message{}, -1, errors.NewErr(TagDeadlineFailed, err)
-	}
+// receive waits for the next message. It returns the file descriptor that came with it, or -1;
+// a descriptor that came is close-on-exec and non-blocking. Closing conn ends the wait.
+func receive(conn *net.UnixConn) (message, int, error) {
 	buf := make([]byte, maxMessage+1)
 	oob := make([]byte, unix.CmsgSpace(4*4))
 	n, oobn, flags, _, err := conn.ReadMsgUnix(buf, oob)
-	if errors.Is(err, os.ErrDeadlineExceeded) {
-		return message{}, -1, errors.NewErr(TagKeeperSilent, err).SetMetadata("deadline", deadline.String())
-	}
 	// A socket pair of SOCK_SEQPACKET reads 0 bytes when the other end is closed.
 	if (err == nil && n == 0 && oobn == 0) || errors.Is(err, io.EOF) || errors.Is(err, syscall.ECONNRESET) || errors.Is(err, net.ErrClosed) {
 		return message{}, -1, errors.New(TagSocketClosed, "the other end of the socket is closed")
@@ -148,11 +157,13 @@ func decode(data, oob []byte, flags int) (message, int, string) {
 	return m, fd, ""
 }
 
-// failedMessage is the message that tells the other side about an error.
-func failedMessage(err error) message {
-	m := message{Type: msgFailed, Text: err.Error()}
+// failedMessage is the message that tells the other side about an error, as the answer to the
+// request seq.
+func failedMessage(err error, seq int) message {
+	m := message{Type: msgFailed, Seq: seq, Text: err.Error()}
 	if appErr, ok := errors.FromError(err); ok {
 		m.Tag = appErr.Tag
+		m.Route = appErr.Route()
 		if len(appErr.Metadata) > 0 {
 			m.Meta = map[string]string{}
 			for k, v := range appErr.Metadata {

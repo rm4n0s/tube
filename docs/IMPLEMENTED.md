@@ -95,3 +95,17 @@ The log of the finished steps of `docs/IMPLEMENTATION.md`, in order (its rule 11
   - `message` has only the fields this step uses; steps 2.3 to 2.5 add theirs. A descriptor that comes with a message is made close-on-exec and non-blocking inside `receive`, so a descriptor that cannot be is a message that cannot be read (`SandboxMessageInvalid`), not one more Tag.
   - The test binary also plays three misbehaving keepers (chosen by `TUBE_FAKE_KEEPER`), to test `SandboxProtocolError`, `SandboxKeeperFailed` and `SandboxKeeperExit`.
   - `Close` does its work in a named method, `close`: under the race detector the closure's frame is named `Close.1`, not `Close.func1`, and the route test broke. Trap 3 of `docs/IMPLEMENTATION.md` now says this.
+
+## Step 2.3: Addresses, routes and the application
+- Date: 2026-11-25
+- What was done: the keeper configures the namespace (`configure.go`: the loopback, IPv6 off on `tube0` without an IPv6 address, the MTU and the addresses, a default route for each family, `ping_group_range`) over one netlink socket, and answers `configure` at any time; it starts the application on `run` in a nested user namespace as the user's own uid and gid, and sends `exited` with the code or the signal. Tube's side: `Configure`, `Run`, `Wait` and `ExitStatus`, with one reader goroutine that hands the keeper's answers to the request in flight. `sandboxtest`: the `Peer` that plays the VPN on the device, and the probe `report`.
+- Checks: `scripts/checks.sh` passed, with the tests against the real server (the tests of `sandbox` pass inside `scripts/vpn-ns.sh` too). No keeper or application is left after the tests.
+- Proofs: none
+- Manual checks: none
+- Differences from the plan or the spec:
+  - `receive` has no deadline any more: on Tube's side one goroutine reads every message of the keeper, and the wait for an answer (`Sandbox.exchange`) has the step's timeout, so `SandboxKeeperSilent` is created there; `SandboxDeadlineFailed` is gone. Messages carry a sequence number (`seq`), which the keeper puts into its answer, so that a late answer is never taken for the answer to a later request.
+  - A `failed` message carries the route of the keeper's error, which Tube puts into the metadata `keeper_route`: the tests assert the keeper's routes through it (`keeper.startApp.KeeperAppNotFound`, ...).
+  - More Tags, each tested: `SandboxCancelled` (the context ended while Tube waited for an answer), `KeeperNoApplication` (a `run` to a keeper started only as a check). `KeeperAppStartFailed` is tested with a `run` of a uid that cannot be mapped.
+  - `writeSetting` opens the existing file of the setting: `os.WriteFile` would have created a file that does not exist, and the test of a missing file found it.
+  - Until step 2.5, the keeper kills the application with SIGKILL when the socket closes (step 2.5 makes it SIGTERM, then SIGKILL after the kill delay): no application is left behind in the meantime.
+  - `packettest` had what this step needed already (step 1.4). Tests that the plan does not name: `TestRunWithoutAnApplication`, `TestRunRefusesBadIDs`, `TestAppCannotStart` (the first part of step 2.5's tests of "not found" and "not executable", which the new Tags needed), `TestWriteSetting`, `TestCancelled`, `TestKeeperLost`, `TestALateAnswerIsDropped`.
