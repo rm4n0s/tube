@@ -208,3 +208,15 @@ The log of the finished steps of `docs/IMPLEMENTATION.md`, in order (its rule 11
   - `State` has a `String` method, for the logs and the tests.
   - `Disconnect` returns when it is done, and a `Disconnect` or `Use` that comes after the application ended does nothing (`Use` closes the given tunnel and returns `SessionEnded`).
   - The status of a disconnected session keeps the DNS servers that `resolv.conf` still has, and has the zero network.
+
+## Step 4.3: The log of a terminal
+- Date: 2026-11-25
+- What was done: `internal/core/termlog`: `Log` turns what a program writes to a terminal into plain lines: UTF-8 that is cut between writes is finished by the next one and invalid bytes become U+FFFD; `\n` and `\r\n` end a line; a lone `\r` lets the next text empty the line (a progress bar); backspace and tabs; every control character, format character and line or paragraph separator is dropped; escape sequences (CSI, OSC, DCS/SOS/PM/APC, ESC and one byte) are dropped, also when they are cut between writes, and one that has not ended after 256 bytes is given up. The lines are bounded in width and number; `Len`, `Range`, `OnWrite`.
+- Checks: `scripts/checks.sh` passed, with the tests against the real server.
+- Proofs: none
+- Manual checks: none
+- Differences from the plan or the spec:
+  - A CSI that meets a byte which cannot be part of it ends there, and that byte is read as text (so a new line inside a broken sequence still ends the line).
+  - The byte after the first 256 of a sequence that never ends is read normally; the test checks that none of the first 256 reaches a line.
+  - `Log.String` joins all the lines, for logs and tests.
+  - The first version of the test had the invisible characters it tests written as themselves; they are escapes now (SPEC §4.2 rule 10).
