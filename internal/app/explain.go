@@ -4,7 +4,9 @@ package app
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/tube/internal/core/profiles"
@@ -59,7 +61,7 @@ func sentenceOf(err error) string {
 	if !ok {
 		return sanitize.Display(err.Error(), maxMessage)
 	}
-	if s := tagSentence(appErr); s != "" {
+	if s := sentenceOfTag(appErr); s != "" {
 		return s
 	}
 	return sanitize.Display(appErr.Message, maxMessage)
@@ -105,43 +107,99 @@ func meta(appErr *errors.Error, key string) string {
 	return sanitize.Display(fmt.Sprint(v), maxPiece)
 }
 
-// tagSentence is the sentence of a Tag of Tube's, or "" for another.
-func tagSentence(appErr *errors.Error) string {
-	switch appErr.Tag {
-	case vpn.TagCredentialsNeeded:
-		return "This profile needs a user name and a password."
-	case profiles.TagProfileRunsScripts:
-		if options := meta(appErr, "options"); options != "" {
-			return "This profile runs scripts (" + options + "). Tube never runs them."
+// tagSentence is a sentence of a Tag of Tube's: a format whose arguments are the values of the
+// error's metadata under keys, and the sentence for an error that lacks them ("" when the format
+// needs none).
+type tagSentence struct {
+	tags    []string
+	format  string
+	keys    []string
+	without string
+}
+
+// tagSentences are the sentences of the Tags that Tube knows, besides the kinds of failure of a
+// connection and the problems of the parser.
+var tagSentences = []tagSentence{
+	{tags: []string{vpn.TagCredentialsNeeded}, format: "This profile needs a user name and a password."},
+	{
+		tags: []string{profiles.TagProfileRunsScripts}, format: "This profile runs scripts (%s). Tube never runs them.",
+		keys: []string{"options"}, without: "This profile runs scripts. Tube never runs them.",
+	},
+	{tags: []string{profiles.TagProfileNameTaken}, format: "Another profile is already called %q.", keys: []string{"name"}},
+	{tags: []string{profiles.TagProfileNameEmpty}, format: "A profile needs a name."},
+	{tags: []string{profiles.TagProfileNameTooLong}, format: "The name is too long (" + strconv.Itoa(profiles.MaxNameLen) + " characters at most)."},
+	{tags: []string{profiles.TagProfileFileTooLarge}, format: "The file %q of the profile is too large.", keys: []string{"file"}},
+	{tags: []string{profiles.TagProfileDNSInvalid}, format: "%q is not an IP address.", keys: []string{"value"}},
+	{
+		tags:   []string{profiles.TagProfileDNSTooMany, profiles.TagProfileTooManyDNS},
+		format: "A profile can have " + strconv.Itoa(profiles.MaxDNS) + " DNS servers at most.",
+	},
+	{tags: []string{TagProfileNotFound}, format: "There is no profile called %q.", keys: []string{"name"}},
+	{
+		tags:   []string{TagProfileAmbiguous},
+		format: "More than one profile is called %q when the case is ignored. Write the name exactly.", keys: []string{"name"},
+	},
+	{
+		tags:   []string{sandbox.TagUserNamespaceDenied},
+		format: `This machine does not let an ordinary user make a user namespace, which Tube needs. See docs/GUIDE.md ("What Tube needs").`,
+	},
+	{tags: []string{sandbox.TagTunUnavailable}, format: "Tube cannot open /dev/net/tun."},
+	{
+		tags: []string{sandbox.TagLookPathFailed, sandbox.TagAppNotFound}, format: "The program %q was not found.",
+		keys: []string{"name"}, without: "The program was not found.",
+	},
+	{tags: []string{sandbox.TagAppNotExecutable}, format: "The program cannot be executed."},
+}
+
+// sentenceOfTag is the sentence of a Tag of Tube's, or "" for another.
+func sentenceOfTag(appErr *errors.Error) string {
+	for _, ts := range tagSentences {
+		if !slices.Contains(ts.tags, appErr.Tag) {
+			continue
 		}
-		return "This profile runs scripts. Tube never runs them."
-	case profiles.TagProfileNameTaken:
-		return fmt.Sprintf("Another profile is already called %q.", meta(appErr, "name"))
-	case profiles.TagProfileNameEmpty:
-		return "A profile needs a name."
-	case profiles.TagProfileNameTooLong:
-		return fmt.Sprintf("The name is too long (%d characters at most).", profiles.MaxNameLen)
-	case profiles.TagProfileFileTooLarge:
-		return fmt.Sprintf("The file %q of the profile is too large.", meta(appErr, "file"))
-	case profiles.TagProfileDNSInvalid:
-		return fmt.Sprintf("%q is not an IP address.", meta(appErr, "value"))
-	case profiles.TagProfileDNSTooMany, profiles.TagProfileTooManyDNS:
-		return fmt.Sprintf("A profile can have %d DNS servers at most.", profiles.MaxDNS)
-	case TagProfileNotFound:
-		return fmt.Sprintf("There is no profile called %q.", meta(appErr, "name"))
-	case TagProfileAmbiguous:
-		return fmt.Sprintf("More than one profile is called %q when the case is ignored. Write the name exactly.", meta(appErr, "name"))
-	case sandbox.TagUserNamespaceDenied:
-		return `This machine does not let an ordinary user make a user namespace, which Tube needs. See docs/GUIDE.md ("What Tube needs").`
-	case sandbox.TagTunUnavailable:
-		return "Tube cannot open /dev/net/tun."
-	case sandbox.TagLookPathFailed, sandbox.TagAppNotFound:
-		if name := meta(appErr, "name"); name != "" {
-			return fmt.Sprintf("The program %q was not found.", name)
+		args := make([]any, len(ts.keys))
+		for i, k := range ts.keys {
+			v := meta(appErr, k)
+			if v == "" && ts.without != "" {
+				return ts.without
+			}
+			args[i] = v
 		}
-		return "The program was not found."
-	case sandbox.TagAppNotExecutable:
-		return "The program cannot be executed."
+		if len(args) == 0 {
+			return ts.format
+		}
+		return fmt.Sprintf(ts.format, args...)
 	}
 	return ""
+}
+
+// Sentences are the sentences that Explain gives for the Tags it knows, with "<key>" where a
+// piece of the error goes: for docs/GUIDE.md and its test.
+func Sentences() []string {
+	var out []string
+	for _, kind := range []vpn.Kind{vpn.KindAuthFailed, vpn.KindNoAnswer, vpn.KindCertificate, vpn.KindServerEnded, vpn.KindUnsupported, vpn.KindCancelled} {
+		out = append(out, kindSentences[kind])
+	}
+	for _, ts := range tagSentences {
+		args := make([]any, len(ts.keys))
+		for i, k := range ts.keys {
+			args[i] = "<" + k + ">"
+		}
+		if len(args) == 0 {
+			out = append(out, ts.format)
+		} else {
+			out = append(out, fmt.Sprintf(ts.format, args...))
+		}
+		if ts.without != "" {
+			out = append(out, ts.without)
+		}
+	}
+	for _, kind := range []profiles.ProblemKind{
+		profiles.ProblemUnsupported, profiles.ProblemBadOption, profiles.ProblemMissing, profiles.ProblemFile,
+		profiles.ProblemSyntax, profiles.ProblemTooLarge,
+	} {
+		sentence := problemSentence(profiles.Problem{Kind: kind, Option: "<option>", Line: 1, Reason: "<reason>"})
+		out = append(out, strings.ReplaceAll(sentence, "line 1", "line <line>"))
+	}
+	return out
 }

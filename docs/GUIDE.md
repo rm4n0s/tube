@@ -1,0 +1,319 @@
+# Tube: the guide
+
+Tube runs one application through a VPN, and only that application. This guide is for the people
+who use it. `README.md` says what Tube is, and how to build and install it.
+
+## What Tube needs
+
+Tube makes a private user, network and mount namespace for the application. It does that as an
+ordinary user, so the kernel must allow it. Three settings decide it:
+
+| Setting | Needed value | Where it exists |
+|---|---|---|
+| `user.max_user_namespaces` | above 0 | every kernel |
+| `kernel.unprivileged_userns_clone` | `1` | Debian and its derivatives |
+| `kernel.apparmor_restrict_unprivileged_userns` | `0`, or an AppArmor profile that allows Tube | Ubuntu 24.04 and later |
+
+To see them:
+
+```
+sysctl user.max_user_namespaces
+sysctl kernel.unprivileged_userns_clone
+sysctl kernel.apparmor_restrict_unprivileged_userns
+```
+
+A setting that your kernel does not have makes `sysctl` say "cannot stat"; that setting then
+does not matter. Changing a setting needs root (`sudo sysctl -w ...`). Tube itself never asks
+for root, and never changes these settings.
+
+Tube also needs `/dev/net/tun` that you may open. On the usual distributions it has mode 0666.
+
+Tube checks both when it starts, before it shows anything. When the kernel refuses, Tube ends
+with status 125 and says:
+
+```
+tube: This machine does not let an ordinary user make a user namespace, which Tube needs. See docs/GUIDE.md ("What Tube needs"). (SandboxUserNamespaceDenied)
+```
+
+## Adding a profile
+
+Start Tube, with or without an application:
+
+```
+tube firefox
+tube
+```
+
+The first page is the list of your profiles. Press `a` to add one. Type the path of the `.ovpn`
+file (`~` is your home folder, and `tab` completes the name of a file or a folder). Press `↓` and
+type a name, if you want another one than the file's name. Press `enter`.
+
+Tube keeps a copy of the profile. It copies the `.ovpn` file and the files that it names, so the
+profile keeps working when you move or delete the file that you added it from. The files that a
+profile names (`ca`, `cert`, `key`, `tls-auth`, `tls-crypt`, ...) must be next to it, or below
+its folder. A profile can also hold them inside itself (`<ca>...</ca>`).
+
+Some profiles **run scripts**: they have options such as `up` or `down`. These name a program
+that the official client runs when it connects, usually to change the DNS of the machine. Tube
+never runs a program that a profile names, and it sets the DNS of the application itself. When
+a profile runs scripts, Tube asks:
+
+```
+This profile runs scripts (up, down). Tube never runs them, and sets the DNS of the application itself. Add it without them?
+```
+
+Answer `y` to add it with those lines turned into comments (`# tube: disabled: ...`). The file
+that you added it from is not changed.
+
+The keys of the list:
+
+| Key | What it does |
+|---|---|
+| `↑` `↓` `k` `j`, `home` `end`, `pgup` `pgdn` | move |
+| `enter` | with an application: connect and run it. Without one: open the profile's page |
+| `a` | add a profile |
+| `e` | open the profile's page |
+| `d` | delete the profile, after a question |
+| `?` | the keys of every page |
+| `q`, `ctrl+c` | quit |
+
+The profile's page (`e`) shows everything about the profile: its servers, whether it asks for a
+password, the remembered user name, the DNS servers, the files, and the options that Tube
+ignores. Its keys:
+
+| Key | What it does |
+|---|---|
+| `r` | rename |
+| `u` | the user name to remember |
+| `n` | the DNS servers (see "DNS servers of a profile") |
+| `t` | edit the text of the profile in your editor (`$VISUAL`, else `$EDITOR`, else `nano` or `vi`) |
+| `d` | delete |
+| `enter` | with an application: connect and run it |
+| `esc` | back to the list |
+
+After `t`, Tube checks the text that you saved the way it checks a new profile. When the text is
+not valid, the profile stays as it was, and the message says why.
+
+## Running an application
+
+```
+tube firefox
+```
+
+Select a profile and press `enter`. A profile that asks for a password shows the login page
+first (see "A password"). Tube connects, starts the application, and shows the run screen.
+
+The first line says what runs, through which profile, the state of the VPN, and the traffic of
+the last second, down (`↓`) and up (`↑`). The second line has the tabs. `tab` goes to the next
+tab and `shift+tab` to the one before.
+
+- **Status**: the application and whether it runs; the VPN and its state; the address, the DNS
+  servers and the MTU of the tunnel; the bytes and packets each way, and the rates; the dropped
+  packets; and Tube's events, such as "connected again", with their time.
+- **Output**: what the application prints, as plain lines. It follows the end; `pgup` and `pgdn`
+  scroll, `home` goes to the oldest line that is kept, and `end` follows again. **Every other key
+  goes to the application**, as if you typed it on its terminal: text, `enter`, `backspace`,
+  `ctrl+c`, `ctrl+d`, `ctrl+u`, `esc`, and pasted text. So `ctrl+c` on this tab stops `ping`,
+  and you can answer a program that asks a question.
+- **Network**: your profiles, with `*` and `in use` on the one that the application uses, and a
+  line that says what the application has now. Press `enter` on another profile to **switch** to
+  it. Tube connects the new profile first; the application keeps the old one until the new one is
+  connected. When the new one fails, nothing changes. `esc` cancels a switch that is still
+  connecting. Press `x` to **disconnect**: the application keeps running, without network, until
+  you choose a profile with `enter`.
+
+To **quit**, press `q` (or `ctrl+c`) on the Status or the Network tab. While the application runs,
+Tube asks:
+
+```
+firefox is still running. Stop it and quit?
+```
+
+On `y`, Tube sends the application SIGTERM, and SIGKILL five seconds later when it still runs,
+and quits when it has ended. A second `ctrl+c` quits at once. After the application ended by
+itself, the message line says so with its exit status, and `q` quits without a question. Tube
+exits with the application's exit status.
+
+## Firefox and other programs that are already open
+
+Some programs do not do the work themselves when one of them already runs. They ask the one
+that runs to do it. A second `firefox` asks the first one to open a window. A terminal emulator
+asks its server. The process that does the work is outside Tube's namespace, so **its traffic is
+not in the VPN**.
+
+For Firefox and Thunderbird, Tube sets `MOZ_NO_REMOTE=1`. With a Firefox already open on the same
+profile, `tube firefox` then refuses to start, instead of opening a window outside the VPN. To
+run a second Firefox inside the VPN, give it another Firefox profile:
+
+```
+tube firefox -P tube --no-remote
+```
+
+(`-P` without a name opens Firefox's profile manager, where you can make one.)
+
+Tube cannot know this for every program. When you are not sure, quit the program everywhere
+before you start it with Tube.
+
+## DNS servers of a profile
+
+The application looks names up at the DNS servers of the VPN, through the tunnel. The machine's
+own resolver is not visible to it. Some VPN servers send no DNS server. Tube then warns:
+
+```
+the VPN gave no DNS server: names will not be found; set DNS servers for the profile
+```
+
+On the profile's page, press `n` and type up to 4 IP addresses, separated by spaces or commas
+(for example `10.0.0.53, 1.1.1.1`). These are then used in place of the VPN's. An empty field
+means "the ones that the VPN sends".
+
+## A password
+
+A profile that asks for a user name and a password opens the login page before it connects. The
+user name is filled in when it was remembered, and "remember the user name" is on by default
+(`space` turns it). The password is drawn as nothing: no characters and no dots. It is kept in
+memory only, for connecting again after the VPN dropped, and **Tube never writes it to a file**.
+You type it each time.
+
+With `--profile`, Tube asks on the terminal: the user name when none is remembered, then the
+password, without echo. For scripts, give a file with the user name on the first line and the
+password on the second:
+
+```
+tube --profile work --auth-file ~/.config/work-vpn.auth curl https://example.com
+```
+
+The file must be readable by you only (`chmod 600`); Tube refuses it otherwise.
+
+## Using Tube in scripts, and for programs that need the whole terminal
+
+`--profile <name>` (`-p`) connects that profile and runs the application without the terminal
+UI. The application gets your terminal, so full-screen programs work:
+
+```
+tube -p work ssh host
+tube -p work htop
+```
+
+The name is the profile's exact name, or the only one that has it when the case is ignored.
+While the application runs, Tube writes its own lines on standard error, each starting with
+`tube: `. `--quiet` (`-q`) leaves them out.
+
+The exit status is the application's. Besides that:
+
+| Status | Meaning |
+|---|---|
+| 2 | a mistake in the arguments |
+| 125 | Tube itself failed; the message says why |
+| 126 | the application cannot be executed |
+| 127 | the application was not found |
+| 130 | the terminal UI was quit before a profile was selected |
+| 128 + n | the application was ended by signal n (143 for SIGTERM) |
+
+`tube --version` prints the version, and `tube --help` the options.
+
+## When the VPN drops
+
+When the VPN connection ends by itself, the application keeps running **with no network**. Tube
+never lets it use the machine's network in between. Tube connects the same profile again, after
+1, 2, 4, 8 and 15 seconds, and then every 30 seconds. Its events (on the Status tab, or on
+standard error with `--profile`) say:
+
+```
+tube: the VPN connection ended (the server did not answer); the application has no network; connecting again…
+tube: connected again
+```
+
+When the server refuses the user name or the password on such a try, Tube stops trying:
+
+```
+tube: the VPN server refused the user name or the password; the application stays without network
+```
+
+Then choose the profile again on the Network tab. After you disconnected with `x`, Tube does not
+connect again by itself.
+
+## What the errors mean
+
+An error is shown as a sentence, followed by its Tag in parentheses, for example
+`The VPN server did not answer. (ServerPollTimeout)`. The Tag helps when you report a problem;
+the log (see "The log") has the whole error. The sentences, and what to do:
+
+**The VPN**
+
+- "The VPN server refused the user name or the password." Check them, and type the password
+  again.
+- "The VPN server did not answer." The server is down, or your network blocks it. Try another
+  server of the provider, or the profile's TCP variant.
+- "The certificate of the VPN server was not accepted." The profile does not match the server.
+  Download the profile again from the provider.
+- "The VPN server closed the connection." The server ended the session. Connect again.
+- "The VPN server asks for something that Tube does not support." The server needs an option
+  that gopenvpn-conn does not have. The log names it.
+- "Cancelled." You cancelled the connect.
+
+**Profiles**
+
+- "This profile needs a user name and a password." Give them on the login page, or with
+  `--auth-file`.
+- "This profile runs scripts (<options>). Tube never runs them." and "This profile runs scripts.
+  Tube never runs them." Add it in the terminal UI and answer `y` to add it without them.
+- "Another profile is already called "<name>"." Choose another name; names are compared without
+  case.
+- "A profile needs a name." Type a name.
+- "The name is too long (64 characters at most)." Choose a shorter name.
+- "The file "<file>" of the profile is too large." A file that the profile names is larger than
+  1 MiB. It is probably not the file that the profile means.
+- ""<value>" is not an IP address." The DNS servers are IP addresses, such as `10.0.0.53`.
+- "A profile can have 4 DNS servers at most." Remove some.
+- "There is no profile called "<name>"." Check the name of `--profile`; `tube` without
+  arguments shows the list.
+- "More than one profile is called "<name>" when the case is ignored. Write the name exactly."
+  Write the name with the same capitals as in the list.
+
+**The parser of profiles**
+
+- "The profile uses the option "<option>" on line <line>, which Tube does not support:
+  <reason>." Tube does not support this option (compression, a proxy, a static key, ...). Ask
+  the provider for a profile without it, or remove the line when the server does not need it.
+- "The option "<option>" on line <line> of the profile is not valid: <reason>." The line has a
+  mistake. Fix it with `t` on the profile's page, or in the file before you add it.
+- "The profile has no "<option>"." The profile lacks something that a connection needs, usually
+  `remote`. Download it again.
+- "A file that the profile names with "<option>" cannot be used. Put it next to the profile, or
+  inside the profile." The file is missing, or outside the profile's folder.
+- "The profile cannot be read: a mistake on line <line>." The file is not a valid profile at
+  that line.
+- "The profile is too large." A profile is at most 1 MiB.
+
+**The machine and the application**
+
+- "This machine does not let an ordinary user make a user namespace, which Tube needs." See
+  "What Tube needs".
+- "Tube cannot open /dev/net/tun." The device is missing or you may not open it. On most
+  machines `ls -l /dev/net/tun` shows `crw-rw-rw-`; ask the machine's administrator otherwise.
+- "The program "<name>" was not found." and "The program was not found." The application is not
+  in your `PATH`. Check its name, or give its full path.
+- "The program cannot be executed." The file is not executable (`chmod +x`), or not a program.
+
+Any other error shows its own message. When it is not clear, look at the log, and report it
+(`docs/SECURITY.md` says where).
+
+## Where Tube keeps its files
+
+| Folder | Where | What is in it |
+|---|---|---|
+| Configuration | `$TUBE_CONFIG_DIR`, else `$XDG_CONFIG_HOME/tube`, else `~/.config/tube` | your profiles: `profiles/<id>/meta.json` and `profiles/<id>/files/...` |
+| State | `$TUBE_STATE_DIR`, else `$XDG_STATE_HOME/tube`, else `~/.local/state/tube` | the log |
+| Temporary | a new folder under `$XDG_RUNTIME_DIR`, else under the system's temporary folder | what the namespace needs while an application runs; removed at the end |
+
+Every folder that Tube makes has mode 0700 and every file mode 0600. Several Tubes may run at
+once, each with its own VPN connection.
+
+## The log
+
+Tube writes a log to `tube.log` in the state folder, as JSON lines. When it passes 1 MiB it
+becomes `tube.log.1`. The log has the start and the end of each run, the profile, the addresses
+and DNS servers of the tunnel, the traffic counters, and every error with its Tag and where it
+happened. It never has a key, a password, a token, or a line of a profile. Nothing is logged to
+the terminal.

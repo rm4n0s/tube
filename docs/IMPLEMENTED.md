@@ -319,3 +319,15 @@ The log of the finished steps of `docs/IMPLEMENTATION.md`, in order (its rule 11
   - The mark of the profile in use is the second character of the row's mark: `>*` when it is also selected, ` *` when not.
   - `ctrl+c` on a page that the run screen opened (the login page of a switch, the help page) goes back to the run screen instead of quitting, so that the application is never left without the question of §13.11.
   - The row's last column is no longer padded to 12 cells, so that `connecting again…` fits; the profiles page looks the same.
+
+## Step 7.1: The documents and the release build
+- Date: 2026-11-25
+- What was done: `README.md` (what Tube is, two examples, the first lines of a proof of the Status tab, what it needs with the three settings of the kernel, building and installing, the limits, the documents, the license and the trademark note); `docs/GUIDE.md` (the headings of the plan, with the keys of every page and tab, the exit statuses, and every sentence of `app.Explain` with what to do); `docs/SECURITY.md` (the promises of SPEC §14 and how each is kept and tested, what Tube does not promise, how to report a problem); `scripts/build-release.sh` (linux/amd64 and linux/arm64, `-trimpath`, the version set with `-X`, archives with fixed times and owners, `SHA256SUMS`; status 64 for a mistake). `app.Sentences()`, made from the table that `Explain` now uses for the Tags it knows. `docs/MANUAL-CHECKS.md` has four items more (sound and video, a long download, a suspend and resume, a machine without user namespaces).
+- Checks: `scripts/checks.sh` passed, with the tests against the real server; `TestTheGuideExplainsEveryError` passes; `scripts/heavy.sh --alone -- go test -tags tube_release -run Release ./internal/archtest` passed (both archives, `sha256sum -c`, the amd64 archive holds `LICENSE`, `README.md` and `tube`, the unpacked `tube --version` prints `tube 9.9.9`, and two builds of one version are the same bytes); `golangci-lint run --build-tags tube_release` reports nothing. The three documents were read against the code: their commands, flags, keys and file names exist (`tube --help` and `tube --version` were run).
+- Proofs: none (the step has no proof). No openvpn, tmux or tube process was left.
+- Manual checks: pending, see docs/MANUAL-CHECKS.md (7.1 a to d)
+- Differences from the plan or the spec:
+  - `app.Sentences()` writes the pieces that come from an error as placeholders (`"<name>"`, `line <line>`), and also lists the sentences of the kinds of a failed connection and of the parser's problems, since the guide explains them too.
+  - The tar command lists the files in their sorted order itself: `--sort=name` sorts only what tar finds in folders. The archives are compressed with `gzip -n`, so that they hold no time.
+  - The item of step 6.2 in `docs/MANUAL-CHECKS.md` said to press `q` on the Output tab, where it goes to Firefox; it now goes back to the Status tab first. The item of step 3.2 now says how to add the profile in the TUI.
+  - `TestReleaseBuild` also checks that two builds of one version are the same, and `TestReleaseRefusesAMistake` the status 64.

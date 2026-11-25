@@ -4,10 +4,11 @@ What only a real VPN provider or a real desktop application can show, and the te
 
 ## Step 3.2: `tube --profile` with a real provider
 
-Build Tube and add a real profile first (until the TUI exists, a profile is added by the tests' code only; this check waits for step 5.3, or for a profile that is already in your store):
+Build Tube and add a real profile first: run `./tube`, press `a`, type the path of the provider's `.ovpn` file, press Enter, then `q`.
 
 ```sh
 go build -o tube ./cmd/tube
+./tube
 ./tube --profile <a real profile> curl -s https://ifconfig.me; echo
 curl -s https://ifconfig.me; echo
 ```
@@ -58,7 +59,7 @@ go build -o tube ./cmd/tube
 ./tube firefox -P tube-check --no-remote
 ```
 
-Select the profile and press Enter. Play a video in that Firefox window. Then press Tab, and after that `q`, then `y`.
+Select the profile and press Enter. Play a video in that Firefox window. Then press Tab (the Output tab), then Shift-Tab (back to the Status tab: on the Output tab `q` would go to Firefox), and then `q`, `y`.
 
 Expected: the Status tab's rates (`↓` on the first line, and `Received`) move while the video plays; the Output tab shows what Firefox prints; `q`, `y` closes Firefox and Tube ends.
 
@@ -74,3 +75,51 @@ go build -o tube ./cmd/tube
 Select the first profile and press Enter. In Firefox, open a "what is my IP" page (for example https://ifconfig.me). In Tube, press Tab twice (the Network tab), select the second profile, press Enter, and reload the page. Then press `x`, `y`, and reload the page again.
 
 Expected: the page shows the first VPN's address, then after the switch the second's; after `x` the page does not load; and at no moment does it show the machine's own address.
+
+## Step 7.1 (a): sound and video in a browser
+
+With a real provider's profile:
+
+```sh
+./tube firefox -P tube-check --no-remote
+```
+
+Select the profile and press Enter. Play a video with sound (a video site, or a web radio) for a few minutes.
+
+Expected: the picture and the sound play as they do without Tube (the sound goes to the machine's speakers: the application shares the sound with the machine, only not its network), and the Status tab's `Received` grows.
+
+## Step 7.1 (b): a long download
+
+With a real provider's profile, a download of a large file (1 GB or more; a Linux distribution's image is a good one):
+
+```sh
+./tube --profile <a real profile> curl -L -o /tmp/tube-download.iso <the URL of a large file>
+./tube curl -L -o /tmp/tube-download.iso <the URL of a large file>
+```
+
+In the second, select the profile and press Enter, and watch the Status tab until the download ends; then remove `/tmp/tube-download.iso`.
+
+Expected: both downloads finish, at about the speed of the VPN without Tube; the Status tab's rate stays above zero while it runs and `Dropped` stays at or near 0; `curl` ends with status 0 (Tube's first line says `curl ended (status 0)`).
+
+## Step 7.1 (c): suspend and resume while an application runs
+
+With a real provider's profile:
+
+```sh
+./tube ping 1.1.1.1
+```
+
+Select the profile and press Enter, then Tab (the Output tab). Suspend the laptop for a minute or more, and wake it up. Watch the Output tab, then Tab to the Network tab and back to the Status tab.
+
+Expected: after the wake-up, the replies stop for a while; the Status tab's events say `the VPN connection ended (...); the application has no network; connecting again…`, and then `connected again`, and the replies come back without anything typed. While it was not connected, no reply came (the machine's own network was never used). `q`, `y` ends it.
+
+## Step 7.1 (d): a machine where user namespaces are off
+
+On a machine (or a virtual machine) where ordinary users may not make user namespaces, for example a Debian with `sysctl kernel.unprivileged_userns_clone=0`, or an Ubuntu 24.04 with its default `kernel.apparmor_restrict_unprivileged_userns=1`:
+
+```sh
+./tube true; echo "status $?"
+./tube --profile <any name> true; echo "status $?"
+```
+
+Expected: both end at once, with status 125, and with the sentence `This machine does not let an ordinary user make a user namespace, which Tube needs. See docs/GUIDE.md ("What Tube needs"). (SandboxUserNamespaceDenied)`; the TUI does not open, and nothing asks for root.
