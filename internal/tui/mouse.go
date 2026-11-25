@@ -186,12 +186,16 @@ func (m Model) clicked(msg tea.MouseClickMsg) (Model, tea.Cmd) {
 	if m.width < minWidth || m.height < minHeight {
 		return m, nil
 	}
+	m.press, m.sel = nil, nil
 	if msg.Button == tea.MouseRight {
 		return m.rightClicked(msg)
 	}
 	if msg.Button != tea.MouseLeft {
 		return m, nil
 	}
+	// The press may be the start of a selection (docs/SPEC.md §13.14).
+	press := m.onScreen(msg.X, msg.Y)
+	m.press = &press
 	m.clip = nil
 	now := m.clock.Now()
 	last := m.lastClick

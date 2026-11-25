@@ -4,4 +4,4 @@
 
 The keys and certificates in these profiles were generated for the proofs, are used nowhere else, and protect nothing. The servers they name do not exist.
 
-`clipboard/wl-paste` is the clipboard of the proofs of the menu of a field: a script that prints the file that `TUBE_PROOF_CLIPBOARD` names. A proof puts `clipboard/` first in the program's `PATH` (`scripts/tui-proof.sh --env PATH=...`), so that no proof reads the clipboard of the machine.
+`clipboard/wl-paste` is the clipboard of the proofs of the menu of a field: a script that prints the file that `TUBE_PROOF_CLIPBOARD` names. A proof puts `clipboard/` first in the program's `PATH` (`scripts/tui-proof.sh --env PATH=...`), so that no proof reads the clipboard of the machine. `clipboard/wl-copy` is its other half, for the proofs of selecting and copying: it writes what Tube copies to that same file, and no proof writes the clipboard of the machine.

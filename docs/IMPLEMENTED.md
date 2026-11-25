@@ -384,3 +384,14 @@ The log of the finished steps of `docs/IMPLEMENTATION.md`, in order (its rule 11
 - Proofs: `ui-ended.txt` (the terminal after `tube ping -c 3` in the TUI: one `enter` on the profile and no key after it; the first line of ping's output is cut by the line that tmux writes when the program has ended).
 - Manual checks: pending, see docs/MANUAL-CHECKS.md ("Tube ends with its application")
 - Differences from the spec before the change: D16 and §13.8, §13.9, §13.11 said that the TUI stays open after the application ended until `q`; they now say that it closes (D31). The golden files `status-ended-*.txt` are the last frame, without "Press q to quit".
+
+## Change outside the steps: Copying text from the TUI
+- Date: 2026-11-25
+- Why: the user, 2026-11-25: "I want to be able to copy text from tube's TUI" (SPEC D32). Done on the branch `feat/copy-text`, not as a step of `docs/IMPLEMENTATION.md`.
+- What was done: `internal/tui/selection.go`: a press of the left button is remembered; a move with the button held selects the text of the screen from the cell of the press to the cell under the mouse, drawn reversed; letting go copies it, as plain text, and the message line says how many characters. The text goes to `wl-copy`, `xclip` or `xsel` (the first that is there, with a display), else the terminal is asked (OSC 52). The press still does what a click does. The help page names the drag. `scripts/tui-proof.sh` has `--drag '<text>'`, and `scripts/testdata/clipboard/wl-copy` is the clipboard that the proofs copy to.
+- Chosen without asking, and told to the user: a drag that copies when the button is let go (no key, no menu); only what is on the screen can be selected; the lines of a box are copied with the text between them.
+- Checks: `scripts/checks.sh` passed, with the tests against the real server.
+- Proofs: `ui-copy.txt` (a drag over the server of a profile, through tmux: the message line says `Copied 19 characters.`; the file that the proof's `wl-copy` wrote held exactly `vpn.example.com:443`). That the selection is drawn reversed while the button is held was looked at in a private tmux with the attributes of the cells, and is a test.
+- Manual checks: pending, see docs/MANUAL-CHECKS.md ("Copying text from the TUI"). Not seen by the session: the real `wl-copy` and the user's terminal (a check must not write the user's clipboard).
+- Differences from the spec before the change: §13.12 and §17 said that text is selected only by the terminal, with `Shift`; a drag now selects and copies (§13.14), and `Shift` still works. `internal/tui` runs a third kind of program, the one that takes the clipboard (§4.2 rule 5).
+

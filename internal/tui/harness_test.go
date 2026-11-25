@@ -67,6 +67,10 @@ func newHarness(t *testing.T, a app.Application, width, height int) *harness {
 		t.Error("the program of the clipboard was run")
 		return ""
 	}
+	m.writeClip = func(context.Context, []string, string) bool {
+		t.Error("the program that takes the clipboard was run")
+		return false
+	}
 	h := &harness{t: t, model: m, clock: clk}
 	h.resize(width, height)
 	h.run(h.model.Init())

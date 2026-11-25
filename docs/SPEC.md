@@ -47,6 +47,7 @@ Tube runs one application through a VPN, and only that application. This file is
 | D29 | The DNS servers of a profile can be given when it is added: the add page has a field for them (§13.3). They can be changed afterwards on the profile's page, as before (§13.4) | the user, 2026-11-25 ("make it possible when adding/editing openvpn profile to also add the DNS") |
 | D30 | `--profile` also takes the path of an `.ovpn` file, written with or without `.ovpn`: the file is added when it is not a profile yet, and the application runs on the user's terminal, without the TUI (§11.1). What the run is missing (the user name, the password, the DNS servers) is asked on the terminal, one after the other, and then whether to save it; `--username`, `--password`, `--dns` and `--save` give the same without a question (§11.2) | the user, 2026-11-25 ("put a flag that will not open a TUI, but add the filename of the ovpn (with or without .ovpn) and start the application and show its output directly ... If username/password and dns missing, then ask them one by one and then ask to save them. And also if the user know that any of these missing, then use a common partner to add them without being interactive, like using a flag"). Chosen while it was built, and told to the user: it is `--profile` and no new option; the names of the options; when the DNS servers are asked for (§11.2); "yes" as the answer of an empty line to the save |
 | D31 | When the application has ended, Tube ends too: the TUI closes by itself, without a key, and Tube exits with the application's status (§13.11). This replaces "stays open until the user quits" of D16 for the time after the application | the user, 2026-11-25 ("when firefox or other application is closed, then close the tube too"). Chosen while it was built, and told to the user: after the TUI closed, the last 20 lines of the application's output and one line of Tube about its end are written on the terminal, so that what a short command printed is not lost with the screen |
+| D32 | Text of the TUI can be copied: the left button, held and moved, selects the text of the screen as a terminal does, and letting it go copies that text to the clipboard (§13.14). Tube gives it to the desktop's own program (`wl-copy`, `xclip`, `xsel`), and asks the terminal when there is none, as it reads the clipboard for D25 | the user, 2026-11-25 ("I want to be able to copy text from tube's TUI"). Chosen while it was built, and told to the user: that it is a drag of the mouse and that it copies when the button is let go, with no key and no menu |
 
 ## 3. Platform and requirements
 
@@ -109,7 +110,7 @@ cmd/tube ──► internal/tui ──► internal/app ──► internal/core/.
 2. `internal/tui` imports `internal/app` and, of the core, only `clock` and `sanitize`. Nothing imports `internal/tui` but `cmd/tube`, and nothing imports a UI library but `internal/tui` and `cmd/tube`.
 3. Only `internal/core/vpn` (with the packages below it) and `internal/core/profiles` import `github.com/rm4n0s/gopenvpn-conn/...`, in test files too; nothing imports its `vpnnet`.
 4. Nothing imports the standard library `errors`, and no file but a test calls `fmt.Errorf` (CLAUDE.md "Error handling").
-5. Nothing imports `os/exec` but `internal/core/sandbox` (which starts the keeper and the application), `internal/tui` (the editor, §13.5, and the program that prints the clipboard, §13.13), test files, and the packages that only tests use (a folder whose name ends with `test`: `vpntest`, `nstest`, ...). Tube never runs `ip`, `unshare`, `openvpn` or a shell.
+5. Nothing imports `os/exec` but `internal/core/sandbox` (which starts the keeper and the application), `internal/tui` (the editor, §13.5, and the programs of the clipboard: the one that prints it, §13.13, and the one that takes it, §13.14), test files, and the packages that only tests use (a folder whose name ends with `test`: `vpntest`, `nstest`, ...). Tube never runs `ip`, `unshare`, `openvpn` or a shell.
 6. Every Go file starts with the line `// SPDX-License-Identifier: GPL-2.0-only`.
 7. Every error Tag (the first argument of `errors.New`, `errors.NewErr`, `errors.NewErrf`: a string literal or a Tag constant) is created at one place and is asserted by a test, by its route (`HasRoute("...Tag")`) or by its Tag. `scripts/error-tags.sh --untested` lists the ones that are not; `docs/ERROR-TAGS-UNTESTED.md` is the only list of exceptions, each with its reason.
 8. No file has `import "C"`.
@@ -490,6 +491,7 @@ The TUI asks the terminal for the clicks and the wheel of the mouse (D22). Every
 - **The wheel** scrolls the list of the page (the profiles, the folder, the Network tab) three rows, the selection staying inside what is shown, and the Output tab three lines.
 - While a question is open, only its two answers and the keys of the last line can be clicked, and the wheel does nothing.
 - What is clicked is always what is drawn: the page draws lines that know their parts that can be clicked, and a click is looked up in the same lines.
+- **The left button, held and moved,** selects text, and letting it go copies it (§13.14). The press itself still does what a click does.
 - While the TUI has the mouse, the terminal does not select text with it. Terminals select text while `Shift` is held; the help page says so.
 - **A click of the right button** in a text field opens the menu of the field (§13.13). Anywhere else it does nothing.
 
@@ -504,6 +506,23 @@ How the clipboard is read:
 
 The clipboard is read only for a click of the right button in a field, never at another time. Its text is never drawn, not even in the menu (it may be a password), never logged, and forgotten when the menu closes. A paste of the terminal itself (bracketed paste) works as before, in every field.
 
+### 13.14 Selecting and copying
+
+Text of the screen is copied with the mouse (D32), on every page and tab:
+
+- The left button is pressed on a cell, moved while it is held, and let go. From the first move to another cell, the text between the cell of the press and the cell under the mouse is **selected**, in the order of reading and whichever of the two comes first: of the first line from its cell to the right edge, the lines between whole, and the last line up to its cell. A character that is two cells wide is selected whole. The selection is drawn reversed while the button is held. A cell outside the screen counts as the nearest one of the screen.
+- When the button is let go, the selected text is **copied to the clipboard** and is selected no more. The text is what the screen draws in those cells, as plain text: each line without the spaces at its end, a new line between two lines, and no empty lines at the end. A selection of empty cells copies nothing. The message line says `Copied <n> characters.`
+- A press without a move, or a move back to the cell of the press, is a click and copies nothing. A key, the wheel, a click of the right button and a change of the terminal's size end a selection without copying.
+- The press that begins a selection does what a click there does (§13.12): a row is selected, a field gets its cursor. An open menu of a field closes when a selection begins.
+- Only what is on the screen can be selected: for more lines of the Output tab than fit, scroll and copy again. The lines that frame a box are text of the screen like any other.
+
+How the text gets to the clipboard, the other way of §13.13:
+
+1. With a display (`WAYLAND_DISPLAY`, or `DISPLAY`), by the first of these programs that is in `PATH`, run without a shell, with the text on its standard input: `wl-copy --type text/plain` (Wayland), `xclip -selection clipboard -in`, `xsel --clipboard --input` (X11). It may run for 2 seconds. When it fails, the message line says so, as an error, and names `Shift`. Such a program leaves a process behind that holds the text until something else is copied: a clipboard of a desktop is kept by the program that copied. That process is the desktop's way, it is not stopped when Tube ends, and it holds nothing but the copied text.
+2. Else Tube asks the terminal (OSC 52). A terminal does not say whether it did, so the message line says `Copied <n> characters, if your terminal allows it; else hold shift and select with the terminal.`
+
+What is copied is only what is drawn, so no secret can be copied: a password is drawn as stars (D26) and is copied as stars. The copied text is never logged. At most 256 KiB are copied; a screen has far less.
+
 ## 14. Security
 
 What Tube promises, and where it is kept:
@@ -515,7 +534,7 @@ What Tube promises, and where it is kept:
 | The names go to the VPN's DNS | §8.4 | a test resolves a name inside and sees the query on the TUN, to the configured server; with no server, the lookup fails |
 | The application cannot change the namespace's network | it runs in a nested user namespace with no capability over it (§8.5) | a test tries (`RTM_NEWROUTE`) from inside and is refused |
 | No root | nothing needs it; archtest rule 5 keeps `sudo` and helpers out | |
-| Keys and passwords stay private | modes 0700 and 0600 (§5); the password in memory, and in a file of mode 0600 only when the user has it remembered (§6.6); never in a log, an error, a snapshot or on the screen. The value of `--password` is the exception that the user chooses: the list of processes shows it (§17) | tests of the modes; tests that a known secret appears in no log line and no error |
+| Keys and passwords stay private | modes 0700 and 0600 (§5); the password in memory, and in a file of mode 0600 only when the user has it remembered (§6.6); never in a log, an error, a snapshot or on the screen, and so never in what is copied from the screen (§13.14). The value of `--password` is the exception that the user chooses: the list of processes shows it (§17) | tests of the modes; tests that a known secret appears in no log line and no error |
 | Firefox runs inside the VPN also when the user's Firefox is open | a profile of its own (§8.7) | a test of the arguments that a program called `firefox` gets through the real path; that Firefox then is a process of its own was seen by hand (Firefox 160) |
 | Hostile text cannot reach the terminal | `sanitize.Display` (§6.5); search domains checked (§7) | tests with escape sequences in names, remotes and pushed options |
 | A profile runs nothing | only `ovpn` parses it; script options are refused or disabled (§6.2) | a test adds a profile with `up` and sees that nothing ran |
@@ -544,7 +563,7 @@ Build tag `tube_server`, run under `scripts/vpn-ns.sh` (a private user and netwo
 
 ### 16.4 Tests of the TUI
 
-They drive the model directly: `Update` with key, mouse and window-size messages, then `View`, compared with golden text files, with a fake clock, a fixed color profile and the fake application of `apptest`. The golden files hold the text without its colors. The add page of these tests lists folders that are held in memory, not the folders of the machine, and their clipboard is a function of the test, never the one of the machine (the proofs get no display of the machine, and a `wl-paste` of their own); the tests of the real list read folders under `t.TempDir()`. No terminal is needed.
+They drive the model directly: `Update` with key, mouse and window-size messages, then `View`, compared with golden text files, with a fake clock, a fixed color profile and the fake application of `apptest`. The golden files hold the text without its colors. The add page of these tests lists folders that are held in memory, not the folders of the machine, and their clipboard is a function of the test, for reading and for copying, never the one of the machine (the proofs get no display of the machine, and a `wl-paste` and a `wl-copy` of their own); the tests of the real list read folders under `t.TempDir()`. No terminal is needed.
 
 ### 16.5 Proofs
 
@@ -559,7 +578,7 @@ A step that says so makes a proof with `scripts/tui-proof.sh`: the real program,
 - What gopenvpn-conn does not support is not supported: compression, proxies, static keys, encrypted private keys, challenge/response logins (its README lists them). The parser's error names the option.
 - In the TUI the application's terminal is a dumb one that shows plain lines: a program that draws the whole screen (`vim`, `htop`, `less`) or needs every key (`ssh` to a shell with completion) is run with `--profile`, which gives it the real terminal. With `--profile` there are no tabs, and the profile cannot be switched while the application runs.
 - A password that is given with `--password` is an argument of Tube: while Tube runs, the other users of the machine can read it in the list of processes (`ps`), and the shell may keep it in its history. `--auth-file`, the question on the terminal and the remembered password have neither problem.
-- While the TUI is open, the mouse belongs to it: the terminal selects text only while `Shift` is held (§13.12).
+- While the TUI is open, the mouse belongs to it: a drag selects and copies what is on the screen (§13.14), and the terminal's own selection works only while `Shift` is held (§13.12). More lines than the screen shows are copied one screen at a time.
 - Flatpak and Snap applications are not tested.
 
 ## 18. Milestones

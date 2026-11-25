@@ -136,8 +136,17 @@ Everything in Tube can be done with the keys, and with the mouse:
 - A click of the **right button** in a text field opens a menu with `Paste`, when the clipboard
   has text (see "A password").
 
-While Tube is open, the mouse belongs to it. To select text with the mouse, to copy it, hold
-`shift` while you drag: your terminal then selects, as it does in other full-screen programs.
+**To copy text**, drag over it: press the left button where the text begins, move to where it
+ends, and let go. The text is shown reversed while you hold the button, and is in the clipboard
+when you let go; the message line says `Copied 21 characters.` You can copy anything that Tube
+shows, over one line or several: an address on the Status tab, lines of the Output tab, an
+error. A password is copied as the stars that you see, never as the password. For more lines of
+the output than the screen shows, scroll and copy again.
+
+Tube gives the text to `wl-copy` (the package `wl-clipboard`) on Wayland, or to `xclip` or `xsel`
+on X11; without one of them it asks your terminal, and not every terminal copies when asked. You
+can always hold `shift` while you drag: your terminal then selects by itself, as it does in other
+full-screen programs, and you copy with its own key (often `ctrl+shift+c`).
 
 Tube has colors for a dark and for a light terminal, and asks your terminal which one it is. It
 follows `NO_COLOR`: without colors, the selected row is drawn reversed.

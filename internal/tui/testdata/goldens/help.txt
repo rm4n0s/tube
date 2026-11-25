@@ -16,8 +16,8 @@
   Question — y: yes · n esc enter: no                                                               
   Keys — any key: close                                                                             
   Mouse — click: select, or press the key or the button under it · double click: open, run or use · 
-  wheel: scroll · right click in a field: a menu to paste · shift and drag: select text, as your    
-  terminal does                                                                                     
+  wheel: scroll · right click in a field: a menu to paste · drag: select text and copy it · shift   
+  and drag: select as your terminal does                                                            
                                                                                                     
 Tube runs one application through a VPN, and only that application: nothing else of the machine uses
 it.                                                                                                 

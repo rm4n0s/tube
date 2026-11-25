@@ -191,3 +191,14 @@ Select a profile and press Enter. When Firefox is open, close its window (or qui
 
 Expected: the terminal UI closes by itself, without a key; the terminal shows the last lines that Firefox printed, if any, and then `tube: firefox ended (status 0)`; `pgrep -a firefox` shows no Firefox of Tube left (your own Firefox, if it was open, still runs).
 
+## Copying text from the TUI (a change outside the steps, 2026-11-25): your terminal and your clipboard
+
+The tests drag with messages and give the model a clipboard of their own, and the proof drags through tmux into a `wl-copy` of its own; only your terminal and your desktop show the real ones.
+
+```sh
+go build -o tube ./cmd/tube
+./tube ping -c 20 example.com
+```
+
+Expected: on the list of profiles, press the left button on the first letter of a server, move to its last letter and let go: the text is reversed while you hold the button, the message line then says `Copied <n> characters.`, and a paste in another program (a text editor) gives exactly that text. After a profile is selected: the same on the Output tab over two or three lines of `ping` (the paste has the lines, without spaces at their ends), and on the Status tab over the address. Holding `shift` while you drag still selects with the terminal itself.
+

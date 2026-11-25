@@ -82,6 +82,12 @@ type Model struct {
 	clip     *clipWait
 	menu     *menu
 	readClip func(ctx context.Context, argv []string) string
+	// press is the cell where the left button was pressed, while it is held; sel is what the
+	// mouse has selected since; writeClip runs the program that takes the clipboard (the tests
+	// replace it).
+	press     *cell
+	sel       *selection
+	writeClip func(ctx context.Context, argv []string, text string) bool
 	// dark says that the terminal's background is dark, and colors that the terminal draws
 	// colors: the styles are made for both.
 	dark, colors bool
@@ -116,7 +122,7 @@ func NewModel(ctx context.Context, a app.Application, clk clock.Clock) Model {
 	}
 	return Model{
 		ctx: ctx, app: a, clock: clk, styles: newStyles(true, true), dark: true, colors: true, page: pageProfiles,
-		home: home, cwd: cwd, readDir: defaultReadDir, readClip: runClipboard,
+		home: home, cwd: cwd, readDir: defaultReadDir, readClip: runClipboard, writeClip: writeClipboard,
 		getenv: os.Getenv, lookPath: exec.LookPath, execEditor: execEditor,
 	}
 }
@@ -142,6 +148,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
+		m.press, m.sel = nil, nil
 		if m.run != nil {
 			return m, tea.Batch(m.resizeOutput(), m.readRun())
 		}
@@ -186,7 +193,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.styles = newStyles(m.dark, m.colors)
 	case tea.MouseClickMsg:
 		return m.clicked(msg)
+	case tea.MouseMotionMsg:
+		return m.moved(msg)
+	case tea.MouseReleaseMsg:
+		return m.released(msg)
+	case copiedMsg:
+		m = m.copyDone(msg)
 	case tea.MouseWheelMsg:
+		m.press, m.sel = nil, nil
 		m, cmd := m.wheeled(msg)
 		m.scroll()
 		return m, cmd
@@ -327,6 +341,7 @@ func (m *Model) scroll() {
 func (m Model) key(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	m.message, m.isError = "", false
 	m.clip = nil
+	m.press, m.sel = nil, nil
 	name := msg.String()
 	if menu := m.menu; menu != nil {
 		// The menu of a field: enter pastes, esc closes it, and another key closes it and is

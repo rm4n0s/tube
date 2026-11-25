@@ -38,7 +38,7 @@ func (m Model) View() tea.View {
 	lines := m.draw()
 	out := make([]string, len(lines))
 	for i, l := range lines {
-		out[i] = fit(l.s, m.width)
+		out[i] = m.withSelection(fit(l.s, m.width), i)
 	}
 	v.SetContent(strings.Join(out, "\n"))
 	return v

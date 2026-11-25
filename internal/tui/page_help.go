@@ -13,7 +13,8 @@ var helpAbout = []string{
 
 // helpMouse is the line of the help page about the mouse (docs/SPEC.md §13.12).
 const helpMouse = "click: select, or press the key or the button under it · double click: open, run or use · " +
-	"wheel: scroll · right click in a field: a menu to paste · shift and drag: select text, as your terminal does"
+	"wheel: scroll · right click in a field: a menu to paste · drag: select text and copy it · " +
+	"shift and drag: select as your terminal does"
 
 // helpBody is every binding of the table, page by page, then the mouse, then what Tube does.
 func (m Model) helpBody() []line {

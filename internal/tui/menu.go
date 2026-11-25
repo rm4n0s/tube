@@ -27,12 +27,16 @@ const (
 	noClipboard     = "The clipboard cannot be read here. Paste with your terminal (often ctrl+shift+v)."
 )
 
-// clipboardPrograms are the programs that print the clipboard, each with the variable of the
-// display that it needs: the first one that is found is run, without a shell.
-var clipboardPrograms = []struct {
+// clipboardProgram is a program of the desktop for the clipboard, with its arguments, and the
+// variable of the display that it needs.
+type clipboardProgram struct {
 	env  string
 	argv []string
-}{
+}
+
+// clipboardPrograms are the programs that print the clipboard, each with the variable of the
+// display that it needs: the first one that is found is run, without a shell.
+var clipboardPrograms = []clipboardProgram{
 	{"WAYLAND_DISPLAY", []string{"wl-paste", "--no-newline", "--type", "text"}},
 	{"DISPLAY", []string{"xclip", "-selection", "clipboard", "-out"}},
 	{"DISPLAY", []string{"xsel", "--clipboard", "--output"}},
@@ -58,7 +62,13 @@ type (
 // clipboardCommand is the program that prints the clipboard, with its arguments, or nil when
 // there is no display or none of the programs is installed.
 func clipboardCommand(getenv func(string) string, lookPath func(string) (string, error)) []string {
-	for _, p := range clipboardPrograms {
+	return programOf(clipboardPrograms, getenv, lookPath)
+}
+
+// programOf is the first of the programs whose display is there and which is installed, with
+// its arguments, or nil.
+func programOf(programs []clipboardProgram, getenv func(string) string, lookPath func(string) (string, error)) []string {
+	for _, p := range programs {
 		if getenv(p.env) == "" {
 			continue
 		}

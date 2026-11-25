@@ -40,6 +40,8 @@ type styles struct {
 	tab lipgloss.Style
 	// down and up are the traffic that was received and sent.
 	down, up lipgloss.Style
+	// selection is the text that the mouse is selecting: reversed, as a terminal draws it.
+	selection lipgloss.Style
 }
 
 // newStyles makes the styles for a dark or a light terminal, with or without colors. The colors
@@ -87,6 +89,7 @@ func newStyles(dark, colors bool) styles {
 		tab:         s().Foreground(gray),
 		down:        s().Foreground(green),
 		up:          s().Foreground(blue),
+		selection:   s().Reverse(true),
 	}
 	if !colors {
 		// The terminal draws no color: what is selected must be seen without one.

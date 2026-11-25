@@ -6,7 +6,8 @@
 #   scripts/tui-proof.sh <out.txt> [--config <fixture dir>] [--config-in-place] [--size 100x30] [--wait-first <regex>]
 #                        [--env NAME=value]...
 #                        [--keys '<tmux keys>' | --text '<text>' | --wait '<regex>' |
-#                         --click '<text>' | --double-click '<text>' | --right-click '<text>']... -- [tube arguments]
+#                         --click '<text>' | --double-click '<text>' | --right-click '<text>' |
+#                         --drag '<text>']... -- [tube arguments]
 #
 #   --config <dir>       the configuration folder to copy in (scripts/testdata/three-profiles)
 #   --config-in-place    use the folder of --config as it is, not a copy: a profile added in one
@@ -25,13 +26,17 @@
 #                        must not come after a character that is two cells wide on its line
 #   --double-click '<text>'  the same, with two clicks
 #   --right-click '<text>'   the same, with the right button
+#   --drag '<text>'      waits until the screen has the text, presses the left button on its
+#                        first cell, moves to its last cell and lets the button go there: the
+#                        text is selected and copied. A proof of it gives the program a display
+#                        of its own and a PATH with its own wl-copy, as for the menu of a field
 #
 # Each wait lasts 15 seconds at most; then the script fails and prints the screen. The steps run
 # in the order they are given. Exit status 64 for a mistake in these arguments.
 set -euo pipefail
 
 usage() {
-	echo "usage: scripts/tui-proof.sh <out.txt> [--config <dir>] [--config-in-place] [--size 100x30] [--wait-first <regex>] [--env NAME=value]... [--keys '<keys>' | --text '<text>' | --wait '<regex>' | --click '<text>' | --double-click '<text>' | --right-click '<text>']... -- [tube arguments]" >&2
+	echo "usage: scripts/tui-proof.sh <out.txt> [--config <dir>] [--config-in-place] [--size 100x30] [--wait-first <regex>] [--env NAME=value]... [--keys '<keys>' | --text '<text>' | --wait '<regex>' | --click '<text>' | --double-click '<text>' | --right-click '<text>' | --drag '<text>']... -- [tube arguments]" >&2
 	exit 64
 }
 
@@ -53,7 +58,7 @@ steps=()
 envs=()
 while [[ $# -gt 0 ]]; do
 	case "$1" in
-	--config | --size | --wait-first | --env | --keys | --text | --wait | --click | --double-click | --right-click)
+	--config | --size | --wait-first | --env | --keys | --text | --wait | --click | --double-click | --right-click | --drag)
 		[[ $# -ge 2 ]] || usage
 		case "$1" in
 		--config) config="$2" ;;
@@ -156,6 +161,37 @@ click_on() {
 	exit 1
 }
 
+# drag_over presses the left button on the first cell of the text, moves, with the button held,
+# to its last cell, and lets the button go there. The text must be ASCII and must not come after
+# a character that is two cells wide on its line.
+drag_over() {
+	local text="$1" row=0 line before col end
+	for _ in $(seq 1 150); do
+		if screen | grep -qF -- "$text"; then
+			break
+		fi
+		sleep 0.1
+	done
+	while IFS= read -r line; do
+		row=$((row + 1))
+		if [[ "$line" == *"$text"* ]]; then
+			before="${line%%"$text"*}"
+			col=$((${#before} + 1))
+			end=$((col + ${#text} - 1))
+			tm send-keys -t proof -l $'\e'"[<0;${col};${row}M"
+			sleep 0.1
+			tm send-keys -t proof -l $'\e'"[<32;${end};${row}M"
+			sleep 0.1
+			tm send-keys -t proof -l $'\e'"[<0;${end};${row}m"
+			sleep 0.3
+			return 0
+		fi
+	done < <(screen)
+	echo "tui-proof.sh: no '$text' to select within 15 seconds; the screen:" >&2
+	screen >&2
+	exit 1
+}
+
 wait_for "$wait_first"
 i=0
 while [[ $i -lt ${#steps[@]} ]]; do
@@ -172,6 +208,7 @@ while [[ $i -lt ${#steps[@]} ]]; do
 	--click) click_on "$value" 1 ;;
 	--double-click) click_on "$value" 2 ;;
 	--right-click) click_on "$value" 1 2 ;;
+	--drag) drag_over "$value" ;;
 	esac
 	i=$((i + 2))
 done
