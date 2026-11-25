@@ -88,6 +88,7 @@ func TestFindOrAddProfile(t *testing.T) {
 	upper := moved(t, dir, "Loud.OVPN", profilestest.Options{})
 	noExt := moved(t, dir, "plain", profilestest.Options{})
 	needs := moved(t, dir, "Login.ovpn", profilestest.Options{Password: true})
+	moved(t, dir, "Bare.ovpn", profilestest.Options{})
 	home, _ := os.LookupEnv("HOME")
 	moved(t, home, "Den.ovpn", profilestest.Options{})
 	if err := os.Mkdir(filepath.Join(dir, "folder.ovpn"), 0o700); err != nil {
@@ -113,6 +114,8 @@ func TestFindOrAddProfile(t *testing.T) {
 		{"a file with .OVPN", upper, "", "Loud", ""},
 		{"a file that has no .ovpn", noExt, "", "plain", ""},
 		{"a file in this folder", "Login.ovpn", "", "Login", ""},
+		{"a file in this folder, only its name", "Bare", "", "Bare", ""},
+		{"only the name again is the stored profile", "Bare", "", "", ""},
 		{"a file of the home folder, without .ovpn", "~/Den", "", "Den", ""},
 		{"a folder", filepath.Join(dir, "folder.ovpn"), "", "", "App.FindOrAddProfile.AppNoProfileOrFile"},
 		{"nothing", "nothing", "", "", "App.FindOrAddProfile.AppNoProfileOrFile"},
