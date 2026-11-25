@@ -19,7 +19,7 @@ type field struct {
 	limit int
 	// placeholder is drawn, dim, when the field is empty.
 	placeholder string
-	// secret draws nothing of the text, and no cursor that moves: the field looks empty.
+	// secret draws a "*" in place of each character of the text, never the text.
 	secret bool
 }
 
@@ -96,13 +96,30 @@ func (f *field) key(msg tea.KeyPressMsg) bool {
 	return true
 }
 
+// secretMark is what a secret field draws in place of each of its characters.
+const secretMark = '*'
+
+// shown is the text as the field draws it: for a secret field a "*" in place of each character,
+// so that the user sees that the keys arrive, and how many, and never what they are.
+func (f field) shown() []rune {
+	if !f.secret {
+		return f.text
+	}
+	out := make([]rune, len(f.text))
+	for i := range out {
+		out[i] = secretMark
+	}
+	return out
+}
+
 // first is the first character that the field shows in width cells: the cursor is shown, and
 // as much before it as fits.
 func (f field) first(width int) int {
+	shown := f.shown()
 	room := max(width-1, 1)
 	start, used := f.cursor, 0
 	for start > 0 {
-		w := lipgloss.Width(string(f.text[start-1]))
+		w := lipgloss.Width(string(shown[start-1]))
 		if used+w > room {
 			break
 		}
@@ -113,38 +130,30 @@ func (f field) first(width int) int {
 }
 
 // click puts the cursor on the character that is drawn on the cell x of a field of width cells.
-// A secret field draws nothing, so a click on it moves nothing.
 func (f *field) click(x, width int) {
-	if f.secret {
-		return
-	}
+	shown := f.shown()
 	cells := 0
-	for i := f.first(width); i < len(f.text); i++ {
-		w := lipgloss.Width(string(f.text[i]))
+	for i := f.first(width); i < len(shown); i++ {
+		w := lipgloss.Width(string(shown[i]))
 		if x < cells+w {
 			f.cursor = i
 			return
 		}
 		cells += w
 	}
-	f.cursor = len(f.text)
+	f.cursor = len(shown)
 }
 
 // view draws the field in width cells: the part of the text around the cursor, with the cursor
-// drawn as selected when the field is focused. A secret field draws nothing of its text.
+// drawn as selected when the field is focused. A secret field draws a "*" for each character.
 func (f field) view(width int, focused bool, st styles) string {
 	if width <= 0 {
 		return ""
 	}
 	cursor := st.selected.Render(" ")
 	blank := func(n int) string { return st.field.Render(strings.Repeat(" ", max(n, 0))) }
-	switch {
-	case f.secret:
-		if focused {
-			return cursor + blank(width-1)
-		}
-		return blank(width)
-	case len(f.text) == 0:
+	shown := f.shown()
+	if len(shown) == 0 {
 		placeholder := f.placeholder
 		room := width
 		if focused {
@@ -161,10 +170,10 @@ func (f field) view(width int, focused bool, st styles) string {
 	}
 	var b strings.Builder
 	cells := 0
-	for i := f.first(width); i <= len(f.text); i++ {
+	for i := f.first(width); i <= len(shown); i++ {
 		ch := " "
-		if i < len(f.text) {
-			ch = string(f.text[i])
+		if i < len(shown) {
+			ch = string(shown[i])
 		}
 		w := lipgloss.Width(ch)
 		if cells+w > width {
@@ -173,7 +182,7 @@ func (f field) view(width int, focused bool, st styles) string {
 		switch {
 		case i == f.cursor && focused:
 			b.WriteString(st.selected.Render(ch))
-		case i < len(f.text):
+		case i < len(shown):
 			b.WriteString(st.field.Render(ch))
 		default:
 			continue

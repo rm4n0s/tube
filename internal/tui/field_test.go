@@ -118,16 +118,45 @@ func TestFieldView(t *testing.T) {
 
 func TestFieldSecret(t *testing.T) {
 	st := newStyles(true, true)
-	one, ten := field{secret: true}, field{secret: true}
-	typed(&one, "x")
-	typed(&ten, "hunter2!!!")
-	if one.view(20, true, st) != ten.view(20, true, st) {
-		t.Error("a secret field shows its length")
+	tests := []struct {
+		name, text string
+		width      int
+		focused    bool
+		want       string
+	}{
+		{"a star for each character", "hunter2!!!", 20, false, "**********"},
+		{"one character", "x", 20, true, "*"},
+		{"a wide character is one star", "東京", 20, false, "**"},
+		{"more than fits", "0123456789abcdef", 8, true, "*******"},
+		{"nothing typed", "", 20, true, ""},
 	}
-	if got := ansi.Strip(ten.view(20, true, st)); strings.TrimSpace(got) != "" {
-		t.Errorf("a secret field shows %q", got)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := field{secret: true}
+			typed(&f, tt.text)
+			raw := f.view(tt.width, tt.focused, st)
+			if got := strings.TrimSpace(ansi.Strip(raw)); got != tt.want {
+				t.Errorf("the secret field shows %q, want %q", got, tt.want)
+			}
+			if lipgloss.Width(raw) != tt.width {
+				t.Errorf("the field is %d cells wide, want %d", lipgloss.Width(raw), tt.width)
+			}
+			for _, r := range tt.text {
+				if strings.ContainsRune(ansi.Strip(raw), r) {
+					t.Errorf("the secret field shows the character %q", r)
+				}
+			}
+			if f.value() != tt.text {
+				t.Error("the secret was not kept")
+			}
+		})
 	}
-	if ten.value() != "hunter2!!!" {
-		t.Error("the secret was not kept")
+	// The cursor moves in a secret field as in another one.
+	f := field{secret: true}
+	typed(&f, "abc")
+	pressOn(&f, "left", "left")
+	typed(&f, "X")
+	if f.value() != "aXbc" {
+		t.Errorf("the secret is %q", f.value())
 	}
 }

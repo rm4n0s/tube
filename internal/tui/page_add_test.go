@@ -77,14 +77,19 @@ func TestGoldenAdd(t *testing.T) {
 			h.golden("add-empty-" + size.name)
 		})
 	}
+	t.Run("the folder of the last add", func(t *testing.T) {
+		h := newHarness(t, sampleIn(sampleCwd), 100, 30)
+		h.key("a")
+		h.golden("add-remembered")
+	})
 	t.Run("a file is chosen", func(t *testing.T) {
-		h := newHarness(t, apptest.Sample(), 100, 30)
+		h := newHarness(t, sampleIn(sampleCwd), 100, 30)
 		h.key("a")
 		h.keys("end", "enter")
 		h.golden("add-chosen")
 	})
 	t.Run("all files", func(t *testing.T) {
-		h := newHarness(t, apptest.Sample(), 100, 30)
+		h := newHarness(t, sampleIn(sampleCwd), 100, 30)
 		h.keys("a", "shift+tab", "space")
 		h.golden("add-all-files")
 	})

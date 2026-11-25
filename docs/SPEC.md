@@ -39,6 +39,9 @@ Tube runs one application through a VPN, and only that application. This file is
 | D21 | The TUI is colorful: its own colors for the name of the program, the selected row, the tabs, the states of the VPN, the columns, the keys and the buttons, for a dark and for a light terminal | the user, 2026-11-25 ("I expect to be more colorful") |
 | D22 | The TUI is used with the mouse too: a click selects or presses, a double click opens, runs or uses, the wheel scrolls | the user, 2026-11-25 ("be able to use mouse") |
 | D23 | The add page shows the folders and the `.ovpn` files of a folder as a list that is walked through with the mouse or the keys, and the file is chosen there | the user, 2026-11-25 ("when adding ovpn path, I want to show a file browser that I can surf with my mouse") |
+| D24 | The list of folders of the add page starts in the home folder, and the folder of the last add is remembered, also between two runs: the next add starts there | the user, 2026-11-25 ("the file browser will start from the home and the latest used folder path will be remembered for the next add") |
+| D25 | A click of the right button in a field opens a menu with `Paste` when the clipboard has text. Tube reads the clipboard with the desktop's own program (`wl-paste`, `xclip`, `xsel`), and asks the terminal when there is none | the user, 2026-11-25 ("the username and password will have right click menu with paste button if clipboard has string"); how the clipboard is read follows from what terminals allow: most do not answer a program that asks for it |
+| D26 | The password field draws a `*` for each character, never the characters. This replaces "drawn as nothing" of the first plan | the user, 2026-11-25 ("the password show ******** and not empty") |
 
 ## 3. Platform and requirements
 
@@ -101,7 +104,7 @@ cmd/tube ──► internal/tui ──► internal/app ──► internal/core/.
 2. `internal/tui` imports `internal/app` and, of the core, only `clock` and `sanitize`. Nothing imports `internal/tui` but `cmd/tube`, and nothing imports a UI library but `internal/tui` and `cmd/tube`.
 3. Only `internal/core/vpn` (with the packages below it) and `internal/core/profiles` import `github.com/rm4n0s/gopenvpn-conn/...`, in test files too; nothing imports its `vpnnet`.
 4. Nothing imports the standard library `errors`, and no file but a test calls `fmt.Errorf` (CLAUDE.md "Error handling").
-5. Nothing imports `os/exec` but `internal/core/sandbox` (which starts the keeper and the application), `internal/tui` (the editor, §13.5), test files, and the packages that only tests use (a folder whose name ends with `test`: `vpntest`, `nstest`, ...). Tube never runs `ip`, `unshare`, `openvpn` or a shell.
+5. Nothing imports `os/exec` but `internal/core/sandbox` (which starts the keeper and the application), `internal/tui` (the editor, §13.5, and the program that prints the clipboard, §13.13), test files, and the packages that only tests use (a folder whose name ends with `test`: `vpntest`, `nstest`, ...). Tube never runs `ip`, `unshare`, `openvpn` or a shell.
 6. Every Go file starts with the line `// SPDX-License-Identifier: GPL-2.0-only`.
 7. Every error Tag (the first argument of `errors.New`, `errors.NewErr`, `errors.NewErrf`: a string literal or a Tag constant) is created at one place and is asserted by a test, by its route (`HasRoute("...Tag")`) or by its Tag. `scripts/error-tags.sh --untested` lists the ones that are not; `docs/ERROR-TAGS-UNTESTED.md` is the only list of exceptions, each with its reason.
 8. No file has `import "C"`.
@@ -114,11 +117,12 @@ cmd/tube ──► internal/tui ──► internal/app ──► internal/core/.
 | Folder | Where | What is in it |
 |---|---|---|
 | Configuration | `$TUBE_CONFIG_DIR`, else `$XDG_CONFIG_HOME/tube`, else `~/.config/tube` | `profiles/<id>/meta.json`, `profiles/<id>/files/...` |
-| State | `$TUBE_STATE_DIR`, else `$XDG_STATE_HOME/tube`, else `~/.local/state/tube` | `tube.log`, `tube.log.1` |
+| State | `$TUBE_STATE_DIR`, else `$XDG_STATE_HOME/tube`, else `~/.local/state/tube` | `tube.log`, `tube.log.1`, `state.json` |
 | Temporary | a new folder under `$XDG_RUNTIME_DIR`, else under `os.TempDir()`, one per run, removed at the end | what the namespace needs (§8.4) |
 
 - Every folder Tube makes has mode 0700 and every file mode 0600, whatever the umask. A folder that exists with wider rights is narrowed when Tube first writes into it.
 - A file is written atomically: to a temporary file in the same folder, `fsync`, rename.
+- `state.json` is what Tube remembers between two runs, and nothing that it needs: `{"version": 1, "add_folder": "/home/ada/Downloads"}`, the folder of the profile file that was added last (D24). It is written after an add; a failure to write it is logged and the add stands. When Tube starts, a file that is missing, larger than 64 KiB, not JSON, of a version that Tube does not know, or whose folder is not a clean absolute path of at most 4096 bytes that is safe to draw (§6.5), remembers nothing, and Tube starts all the same.
 - There is no lock: several Tubes may run at once, each with its own VPN connection and namespace. The store reads the folder each time it lists; when two Tubes change the same profile, the last write wins.
 - A relative path in a `TUBE_` variable is an error (`StorageDirNotAbsolute`); an XDG variable that is empty or relative is ignored, as the XDG specification says.
 
@@ -300,7 +304,7 @@ tube [options]                                      only keep the profiles (the 
 
 ### 12.1 Snapshot
 
-`App.Snapshot()` returns a value that the TUI draws from and never changes: the application to run (its name and arguments, or none), and the profiles of §6.4 (id, name, remotes, needs a password, remembered user name, DNS servers, last used, the ignored options, the names of the files, or the reason it is broken).
+`App.Snapshot()` returns a value that the TUI draws from and never changes: the application to run (its name and arguments, or none), and the profiles of §6.4 (id, name, remotes, needs a password, remembered user name, DNS servers, last used, the ignored options, the names of the files, or the reason it is broken), and the folder of the last add (§5, D24), or none.
 
 ### 12.2 Commands and changes
 
@@ -351,7 +355,7 @@ The profile that was used last is selected when the page opens.
 
 From the top: **the list of a folder** (D23), the field **File** (the path of the `.ovpn` file; `~` is the home folder), the field **Name**, the error of the last add, and the buttons `[ Add ]`, `[ Cancel ]` and the mark `[ ] all files`. The question of §6.2 about scripts appears here. `Esc` goes back.
 
-**The list of a folder.** A box with the path of the folder on its upper edge, and in it: `../` (the folder above; not in `/`), then the folders, then the files, each sorted by name without case. Only the files whose name ends in `.ovpn` (any case) are listed, and no name that begins with a dot; with `all files` on, every name is. A link to a folder is a folder. A name that is not safe to draw (§6.5) is never listed. The list opens on the working folder of Tube, and, after an add, on the folder of that add. At most 10,000 names of a folder are read and 2,000 are listed; the lower edge then says so, and it says which rows are shown when not all fit. A folder that cannot be read says so; an empty one too. A terminal that is too short for a list of two rows shows the page without the list (and without `all files`).
+**The list of a folder.** A box with the path of the folder on its upper edge, and in it: `../` (the folder above; not in `/`), then the folders, then the files, each sorted by name without case. Only the files whose name ends in `.ovpn` (any case) are listed, and no name that begins with a dot; with `all files` on, every name is. A link to a folder is a folder. A name that is not safe to draw (§6.5) is never listed. The list opens on the folder of the last add, which `state.json` keeps between two runs (§5), and on the home folder when there was none yet, or when that folder cannot be read any more (D24); without a home folder, on the working folder of Tube. At most 10,000 names of a folder are read and 2,000 are listed; the lower edge then says so, and it says which rows are shown when not all fit. A folder that cannot be read says so; an empty one too. A terminal that is too short for a list of two rows shows the page without the list (and without `all files`).
 
 | In the list | What it does |
 |---|---|
@@ -376,7 +380,7 @@ Shows: name, every remote, whether it asks for a password, the remembered user n
 
 ### 13.6 Login and connecting
 
-- A profile that asks for a password opens the login page first: user name (filled with the remembered one), password (drawn as nothing: no characters, no dots), and "remember the user name" (on by default). `Enter` connects, `Esc` goes back. With the mouse: a click on a field gives it the focus (and puts the cursor of the user name there; the password field shows nothing, so a click moves nothing in it), a click on "remember" changes it, and the buttons `[ Connect ]` (`[ Use ]` when the page was opened from the Network tab) and `[ Cancel ]` are `Enter` and `Esc`.
+- A profile that asks for a password opens the login page first: user name (filled with the remembered one), password (drawn as a `*` for each character, never the characters: D26), and "remember the user name" (on by default). `Enter` connects, `Esc` goes back. With the mouse: a click on a field gives it the focus and puts the cursor there (in the password too: its stars are as many as its characters), a click of the right button in a field opens its menu (§13.13), a click on "remember" changes it, and the buttons `[ Connect ]` (`[ Use ]` when the page was opened from the Network tab) and `[ Cancel ]` are `Enter` and `Esc`.
 - The connecting page shows the profile's name and the seconds that have passed. `Esc`, or a click on `[ Cancel ]`, cancels the connecting and goes back.
 - When it fails: the error (§12.3) on the profiles page; a wrong password goes back to the login page with the user name kept.
 - When it succeeds: the time of use is saved, the application starts, and the run screen opens (§13.8).
@@ -389,7 +393,7 @@ Shows: name, every remote, whether it asks for a password, the remembered user n
 
 While the application runs, and after it has ended until the user quits, the TUI shows the run screen:
 
-- The first line: the application, the profile in use, the state (`connected` and for how long, `connecting again…`, `disconnected`, `login refused`), and the rates down and up. After the application ended: that it ended, and its status.
+- The first line: the application, the profile in use, the state (`connected` and for how long, `connecting again…`, `disconnected`, `login refused`), and the rates down and up. After the application ended: that it ended, and its status. When the line does not fit, the name of the profile is cut first (to 8 cells at least), then the rates are left out, then the time of the state: a long name, such as the name of a provider's file, does not hide the rates.
 - The second line: the tabs, `Status`, `Output`, `Network`; the current one is in brackets. `Tab` goes to the next tab and `Shift-Tab` to the one before, on every tab; a click on a tab shows it.
 - The **Status** tab (the first one shown): the application and whether it runs; the profile and the state; the tunnel's addresses, the DNS servers in use and the MTU; for each direction the bytes and packets since the start and the rate of the last second; the dropped packets; and the events, which are Tube's lines (§10) with their time, the newest last.
 - Sizes are written with decimal units (`1.5 MB`, `80.0 kB/s`), times as `hh:mm:ss`.
@@ -424,6 +428,18 @@ The TUI asks the terminal for the clicks and the wheel of the mouse (D22). Every
 - While a question is open, only its two answers and the keys of the last line can be clicked, and the wheel does nothing.
 - What is clicked is always what is drawn: the page draws lines that know their parts that can be clicked, and a click is looked up in the same lines.
 - While the TUI has the mouse, the terminal does not select text with it. Terminals select text while `Shift` is held; the help page says so.
+- **A click of the right button** in a text field opens the menu of the field (§13.13). Anywhere else it does nothing.
+
+### 13.13 The menu of a field
+
+A click of the right button in a text field (the user name and the password of the login page, the File and the Name of the add page, the field that is open on a profile's page) gives the field the focus and reads the clipboard (D25). When the clipboard has text, a menu with the one entry `Paste` opens under the click (above it when there is no room under). A click on `Paste`, or `Enter`, pastes the text into the field at its cursor, as a paste of the terminal does: made safe for one line, as far as the field's limit allows. `Esc`, a click beside the menu, or another click of the right button closes it; another key closes it and is then the key that it is. While the menu is open nothing else of the page can be clicked, and the wheel does nothing. A clipboard without text opens no menu: the message line says "The clipboard has no text."
+
+How the clipboard is read:
+
+1. With a display (`WAYLAND_DISPLAY`, or `DISPLAY`), by the first of these programs that is in `PATH`, run without a shell and with these arguments: `wl-paste --no-newline --type text` (Wayland), `xclip -selection clipboard -out`, `xsel --clipboard --output` (X11). It may run for 2 seconds, and at most 64 KiB of what it prints are read; a program that fails printed nothing.
+2. Else Tube asks the terminal (OSC 52). Many terminals do not answer, or ask the user first. When no answer came after 2 seconds, the message line says "The clipboard cannot be read here. Paste with your terminal (often ctrl+shift+v)."
+
+The clipboard is read only for a click of the right button in a field, never at another time. Its text is never drawn, not even in the menu (it may be a password), never logged, and forgotten when the menu closes. A paste of the terminal itself (bracketed paste) works as before, in every field.
 
 ## 14. Security
 
@@ -464,7 +480,7 @@ Build tag `tube_server`, run under `scripts/vpn-ns.sh` (a private user and netwo
 
 ### 16.4 Tests of the TUI
 
-They drive the model directly: `Update` with key, mouse and window-size messages, then `View`, compared with golden text files, with a fake clock, a fixed color profile and the fake application of `apptest`. The golden files hold the text without its colors. The add page of these tests lists folders that are held in memory, not the folders of the machine; the tests of the real list read folders under `t.TempDir()`. No terminal is needed.
+They drive the model directly: `Update` with key, mouse and window-size messages, then `View`, compared with golden text files, with a fake clock, a fixed color profile and the fake application of `apptest`. The golden files hold the text without its colors. The add page of these tests lists folders that are held in memory, not the folders of the machine, and their clipboard is a function of the test, never the one of the machine (the proofs get no display of the machine, and a `wl-paste` of their own); the tests of the real list read folders under `t.TempDir()`. No terminal is needed.
 
 ### 16.5 Proofs
 

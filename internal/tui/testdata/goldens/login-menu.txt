@@ -1,0 +1,30 @@
+ Tube   select a profile to run firefox                                                             
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+  The profile Work asks for a user name and a password.                                             
+                                                                                                    
+  User name  ada                                                                                    
+  Password   *******                                                                                
+                ╭───────╮                                                                           
+  [x] remember t│ Paste │ame                                                                        
+                ╰───────╯                                                                           
+  [ Connect ]  [ Cancel ]                                                                           
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                                                    
+enter paste   esc close                                                                             

@@ -6,6 +6,7 @@ import (
 	"context"
 	"flag"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -58,6 +59,14 @@ func newHarness(t *testing.T, a app.Application, width, height int) *harness {
 	clk := clock.NewFake(apptest.SampleTime)
 	m := NewModel(context.Background(), a, clk)
 	m.home, m.cwd, m.readDir = sampleHome, sampleCwd, fakeDirs(sampleDirs())
+	// No test reads the clipboard of the machine: there is no display and no program for it,
+	// unless a test gives its own.
+	m.getenv = func(string) string { return "" }
+	m.lookPath = func(string) (string, error) { return "", exec.ErrNotFound }
+	m.readClip = func(context.Context, []string) string {
+		t.Error("the program of the clipboard was run")
+		return ""
+	}
 	h := &harness{t: t, model: m, clock: clk}
 	h.resize(width, height)
 	h.run(h.model.Init())
@@ -203,6 +212,38 @@ func (h *harness) doubleClickOn(text string) {
 	h.click(x, y)
 	h.clock.Advance(100 * time.Millisecond)
 	h.send(tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+}
+
+// rightClick clicks the right button on a cell.
+func (h *harness) rightClick(x, y int) {
+	h.t.Helper()
+	h.clock.Advance(time.Second)
+	h.send(tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseRight})
+}
+
+// withClipboard gives the model a display and a program that prints text as the clipboard.
+func (h *harness) withClipboard(text string) {
+	h.t.Helper()
+	m := h.m()
+	m.getenv = func(name string) string {
+		if name == "WAYLAND_DISPLAY" {
+			return "wayland-test"
+		}
+		return ""
+	}
+	m.lookPath = func(name string) (string, error) {
+		if name == "wl-paste" {
+			return "/usr/bin/wl-paste", nil
+		}
+		return "", exec.ErrNotFound
+	}
+	m.readClip = func(_ context.Context, argv []string) string {
+		if argv[0] != "wl-paste" {
+			h.t.Errorf("the program of the clipboard is %q", argv)
+		}
+		return text
+	}
+	h.model = m
 }
 
 // wheel turns the wheel by notches: down for a number above 0, up for one below.

@@ -62,22 +62,39 @@ type addPage struct {
 	busy bool
 }
 
-// openAdd opens the add page, on the folder of the last add, or on the working folder.
+// startFolder is where the list of folders starts when no add is remembered: the home folder,
+// and without one the working folder.
+func (m Model) startFolder() string {
+	if m.home != "" {
+		return m.home
+	}
+	return m.cwd
+}
+
+// openAdd opens the add page, on the folder of the last add, which the app remembers between
+// two runs, or on the home folder. When the remembered folder cannot be read any more, the
+// home folder is shown.
 func (m Model) openAdd() (Model, tea.Cmd) {
 	m.page = pageAdd
 	m.add = &addPage{
 		path: field{limit: maxPathLen},
 		name: field{limit: maxNameLen, placeholder: addNamePlaceholder},
 	}
-	dir := m.lastDir
+	start := m.startFolder()
+	dir := m.snap.AddFolder
 	if dir == "" {
-		dir = m.cwd
+		dir = start
 	}
 	if !m.folderShown() {
 		m.add.focus = addFocusPath
 	}
 	m.add.br.want = dir
-	return m, m.readFolder(dir, false, "", false)
+	read := m.readFolder(dir, false, "", false)
+	return m, func() tea.Msg {
+		msg := read().(folderMsg)
+		msg.fallback = start
+		return msg
+	}
 }
 
 // addErrorLines are the lines of the error of the add page, in width cells.
@@ -259,8 +276,8 @@ func (m Model) added(msg addedMsg) (Model, tea.Cmd) {
 		p.err = clean(app.Explain(msg.err))
 		return m, nil
 	}
-	// The next add starts in the folder of this one.
-	m.lastDir = p.br.dir
+	// The next add starts in the folder of this one: the app remembers it, and the snapshot
+	// that is read now has it.
 	m.page, m.add = pageProfiles, nil
 	m.selectID = msg.id
 	m.setNotice("Added " + msg.name + ".")
@@ -294,6 +311,16 @@ func (m Model) clickField(focus, width int) action {
 	}
 }
 
+// focusAdd gives a field of the add page the focus, for its menu.
+func focusAdd(focus int) action {
+	return func(m Model, _ click) (Model, tea.Cmd) {
+		p := *m.add
+		m.add = &p
+		p.err, p.focus = "", focus
+		return m, nil
+	}
+}
+
 // addBody is the add page: the list of a folder, the File and the Name fields, the error of the
 // last add, and the buttons.
 func (m Model) addBody() []line {
@@ -319,9 +346,9 @@ func (m Model) addBody() []line {
 	}
 	lines = append(lines,
 		text(label(addPathLabel, addFocusPath)).
-			append(text(p.path.view(width, p.focus == addFocusPath && !p.busy, st)).whole(m.clickField(addFocusPath, width))),
+			append(text(p.path.view(width, p.focus == addFocusPath && !p.busy, st)).field(m.clickField(addFocusPath, width), focusAdd(addFocusPath))),
 		text(label(addNameLabel, addFocusName)).
-			append(text(name.view(width, p.focus == addFocusName && !p.busy, st)).whole(m.clickField(addFocusName, width))),
+			append(text(name.view(width, p.focus == addFocusName && !p.busy, st)).field(m.clickField(addFocusName, width), focusAdd(addFocusName))),
 	)
 	switch errLines := m.addErrorLines(max(m.width-4, 10)); {
 	case p.busy:

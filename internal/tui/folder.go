@@ -62,6 +62,9 @@ type folderMsg struct {
 	selectName string
 	// fill says that the folder goes into the File field: the user opened it in the list.
 	fill bool
+	// fallback is the folder to show when this one cannot be read, or "": the folder of the
+	// last add may be gone.
+	fallback string
 }
 
 // defaultReadDir reads the names of a folder, at most maxFolderRead of them.
@@ -221,14 +224,19 @@ func (m Model) follow() (Model, tea.Cmd) {
 	return m, m.readFolder(dir, b.all, "", false)
 }
 
-// folderRead takes a folder that was read, when it is the one that is waited for.
-func (m Model) folderRead(msg folderMsg) Model {
+// folderRead takes a folder that was read, when it is the one that is waited for. A folder that
+// cannot be read and has a fallback is not shown: the fallback is read.
+func (m Model) folderRead(msg folderMsg) (Model, tea.Cmd) {
 	if m.add == nil || msg.dir != m.add.br.want {
-		return m
+		return m, nil
 	}
 	p := *m.add
 	m.add = &p
 	b := &p.br
+	if msg.failed && msg.fallback != "" && msg.fallback != msg.dir {
+		b.want = msg.fallback
+		return m, m.readFolder(msg.fallback, b.all, "", false)
+	}
 	b.want, b.dir, b.entries, b.more, b.failed = "", msg.dir, msg.entries, msg.more, msg.failed
 	b.list = list{}
 	b.list.setLen(len(b.entries))
@@ -247,7 +255,7 @@ func (m Model) folderRead(msg folderMsg) Model {
 	if dir, name := m.folderOf(p.path.value()); msg.selectName == "" && dir == b.dir {
 		b.selectPrefix(name)
 	}
-	return m
+	return m, nil
 }
 
 // selectPrefix selects the first name of the folder that begins with prefix, with the same case

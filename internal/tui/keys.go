@@ -23,6 +23,8 @@ const (
 	pageQuestion
 	pageField
 	pageFolder
+	// pageMenu is the open menu of a field.
+	pageMenu
 )
 
 // binding is a key, or keys, and what it does on a page.
@@ -71,6 +73,7 @@ func bindings(withTarget bool) []pageBindings {
 			{"↑↓ jk", "move"}, {"tab shift+tab", "tabs"}, {"enter", "use"}, {"x", "disconnect"}, {"q", "quit"}, {"?", "keys"},
 		}},
 		{"Field", pageField, []binding{{"enter", "save"}, {"esc", "cancel"}}},
+		{"Menu of a field", pageMenu, []binding{{"enter", "paste"}, {"esc", "close"}}},
 		{"Question", pageQuestion, []binding{{"y", "yes"}, {"n esc enter", "no"}}},
 		{"Keys", pageHelp, []binding{{"any key", "close"}}},
 	}

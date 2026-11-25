@@ -74,15 +74,19 @@ type Model struct {
 	// lastClick is the last click of the left button: a second one near it, soon after it, is
 	// a double click.
 	lastClick lastClick
+	// clip is a right click on a field that waits for the clipboard, and menu the menu that it
+	// opened; readClip runs the program that prints the clipboard (the tests replace it).
+	clip     *clipWait
+	menu     *menu
+	readClip func(ctx context.Context, argv []string) string
 	// dark says that the terminal's background is dark, and colors that the terminal draws
 	// colors: the styles are made for both.
 	dark, colors bool
 
-	// home, cwd and readDir are for the paths of the add page: the home folder ("~"), the
-	// working folder, where the list of folders starts, and how a folder is read. lastDir is
-	// the folder of the last add: the next one starts there.
+	// home, cwd and readDir are for the paths of the add page: the home folder ("~"), where
+	// the list of folders starts; the working folder, which a path that is typed without a
+	// folder is in; and how a folder is read.
 	home, cwd string
-	lastDir   string
 	readDir   func(dir string) ([]os.DirEntry, error)
 
 	// getenv and lookPath find the editor; execEditor runs it (the tests replace it). editor is
@@ -102,14 +106,14 @@ func NewModel(ctx context.Context, a app.Application, clk clock.Clock) Model {
 	}
 	// Without a home folder, "~" is not completed; nothing else needs it.
 	home, _ := os.UserHomeDir()
-	// Without a working folder, the list of folders starts at the root.
+	// Without a working folder, a path without a folder is in the root.
 	cwd, err := os.Getwd()
 	if err != nil {
 		cwd = "/"
 	}
 	return Model{
 		ctx: ctx, app: a, clock: clk, styles: newStyles(true, true), dark: true, colors: true, page: pageProfiles,
-		home: home, cwd: cwd, readDir: defaultReadDir,
+		home: home, cwd: cwd, readDir: defaultReadDir, readClip: runClipboard,
 		getenv: os.Getenv, lookPath: exec.LookPath, execEditor: execEditor,
 	}
 }
@@ -147,6 +151,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.takeSnapshot(msg)
 	case tickMsg:
 		m.now = m.clock.Now()
+		m.clipboardLate()
 		if m.run != nil {
 			return m, m.readRun()
 		}
@@ -161,7 +166,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.scroll()
 		return m, cmd
 	case folderMsg:
-		m = m.folderRead(msg)
+		m, cmd := m.folderRead(msg)
+		m.scroll()
+		return m, cmd
+	case clipboardMsg:
+		m = m.clipboardRead(msg.text)
+	case tea.ClipboardMsg:
+		m = m.clipboardRead(msg.Content)
 	case tea.BackgroundColorMsg:
 		m.dark = msg.IsDark()
 		m.styles = newStyles(m.dark, m.colors)
@@ -203,19 +214,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case runMsg:
 		return m.ran(msg)
 	case tea.PasteMsg:
-		switch {
-		case m.ask != nil:
-		case m.page == pageAdd:
-			m, cmd := m.addPaste(msg.Content)
-			m.scroll()
-			return m, cmd
-		case m.page == pageProfile:
-			m = m.profilePaste(msg.Content)
-		case m.page == pageLogin:
-			m = m.loginPaste(msg.Content)
-		case m.page == pageRun && m.run.tab == tabOutput && !m.run.ended():
-			return m, m.input([]byte(msg.Content))
-		}
+		m.menu, m.clip = nil, nil
+		m, cmd := m.pasted(msg.Content)
+		m.scroll()
+		return m, cmd
 	case tea.KeyPressMsg:
 		return m.key(msg)
 	}
@@ -319,7 +321,21 @@ func (m *Model) scroll() {
 // key handles a key press. Any key clears the message line first.
 func (m Model) key(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	m.message, m.isError = "", false
+	m.clip = nil
 	name := msg.String()
+	if menu := m.menu; menu != nil {
+		// The menu of a field: enter pastes, esc closes it, and another key closes it and is
+		// then the key that it is.
+		m.menu = nil
+		switch name {
+		case "enter":
+			m, cmd := m.pasted(menu.text)
+			m.scroll()
+			return m, cmd
+		case "esc":
+			return m, nil
+		}
+	}
 	if name == "ctrl+c" && m.run != nil && m.page != pageRun {
 		// While the application runs, ctrl+c on another page goes back to the run screen.
 		m.page, m.login = pageRun, nil

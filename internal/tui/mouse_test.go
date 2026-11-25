@@ -286,16 +286,18 @@ func TestTheLoginPageIsClicked(t *testing.T) {
 	if l := h.m().login; l.focus != focusUser || l.user.cursor != 1 {
 		t.Errorf("the focus is %d, the cursor %d", l.focus, l.user.cursor)
 	}
-	// The password field shows nothing: a click on it takes the focus and moves nothing.
+	// The password field shows a star for each character: a click on it takes the focus and
+	// puts the cursor on the star that was clicked.
 	h.click(x+5, y+1)
 	h.typeText("secret")
 	if l := h.m().login; l.focus != focusPassword || l.pass.value() != "secret" {
 		t.Errorf("the focus is %d", l.focus)
 	}
-	h.click(x, y+1)
-	if l := h.m().login; l.pass.cursor != len("secret") {
-		t.Errorf("a click moved the cursor of the password to %d", l.pass.cursor)
+	h.click(x+2, y+1)
+	if l := h.m().login; l.pass.cursor != 2 {
+		t.Errorf("a click put the cursor of the password at %d", l.pass.cursor)
 	}
+	h.key("end")
 	h.clickOn("[ Connect ]")
 	if !called(f, "Connect(id-work, ada, ***, false)") {
 		t.Errorf("Calls = %q", f.Calls())
@@ -323,7 +325,8 @@ func TestAClickInAField(t *testing.T) {
 		{name: "on the first cell", text: "hello", cursor: 3, width: 10, x: 0, want: 0},
 		{name: "a wide character", text: "東京x", cursor: 0, width: 10, x: 3, want: 1},
 		{name: "a text that is scrolled", text: "0123456789abcdef", cursor: 16, width: 8, x: 0, want: 9},
-		{name: "a secret", text: "hunter2", cursor: 7, width: 10, x: 2, secret: true, want: 7},
+		{name: "a secret", text: "hunter2", cursor: 7, width: 10, x: 2, secret: true, want: 2},
+		{name: "a secret with wide characters", text: "東京x", cursor: 0, width: 10, x: 2, secret: true, want: 2},
 		{name: "an empty field", text: "", cursor: 0, width: 10, x: 4, want: 0},
 	}
 	for _, tt := range tests {

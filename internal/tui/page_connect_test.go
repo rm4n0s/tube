@@ -96,19 +96,40 @@ func TestThePasswordIsNeverDrawn(t *testing.T) {
 	h := newHarness(t, apptest.Sample(), 100, 30)
 	h.selectProfile("id-work")
 	h.key("enter")
+	// stars is what the password's line shows after its label.
+	stars := func() string {
+		for _, l := range strings.Split(h.screen(), "\n") {
+			if rest, ok := strings.CutPrefix(strings.TrimSpace(l), passwordLabel); ok {
+				return strings.TrimSpace(rest)
+			}
+		}
+		t.Fatalf("no line of the password:\n%s", h.screen())
+		return ""
+	}
+	if got := stars(); got != "" {
+		t.Errorf("an empty password is drawn as %q", got)
+	}
 	h.typeText("hun")
-	three := h.m().View().Content
+	if got := stars(); got != "***" {
+		t.Errorf("three characters are drawn as %q", got)
+	}
 	h.typeText("ter2")
-	seven := h.m().View().Content
-	if strings.Contains(seven, "hunter2") || strings.Contains(seven, "hun") || strings.Contains(seven, "*") {
+	if raw := h.m().View().Content; strings.Contains(raw, "hunter2") || strings.Contains(raw, "hun") || strings.Contains(raw, "ter2") {
 		t.Error("the password is drawn")
 	}
-	if three != seven {
-		t.Error("the screen changes with the length of the password")
+	if got := stars(); got != "*******" {
+		t.Errorf("seven characters are drawn as %q", got)
+	}
+	h.key("backspace")
+	if got := stars(); got != "******" {
+		t.Errorf("after a backspace the password is drawn as %q", got)
 	}
 	h.paste("pasted-secret")
 	if strings.Contains(h.m().View().Content, "pasted-secret") {
 		t.Error("a pasted password is drawn")
+	}
+	if got, want := stars(), strings.Repeat("*", len("hunter")+len("pasted-secret")); got != want {
+		t.Errorf("after a paste the password is drawn as %q", got)
 	}
 }
 

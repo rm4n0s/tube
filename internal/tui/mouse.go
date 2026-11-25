@@ -35,6 +35,9 @@ type action func(m Model, c click) (Model, tea.Cmd)
 type hot struct {
 	x, w int
 	do   action
+	// menu is what a click of the right button does first, before the menu of a field opens
+	// (docs/SPEC.md §13.13): it gives the field the focus. Only a field has one.
+	menu action
 }
 
 // line is a line of the screen and its parts that can be clicked. The pages draw lines, so what
@@ -84,6 +87,13 @@ func (l line) whole(do action) line {
 	return l
 }
 
+// field makes the whole line a field: do is its click, and menu gives it the focus for a click
+// of the right button, which opens the menu of the field.
+func (l line) field(do, menu action) line {
+	l.hots = append([]hot{{x: 0, w: -1, do: do, menu: menu}}, l.hots...)
+	return l
+}
+
 // indent moves the line n cells to the right.
 func (l line) indent(n int) line {
 	return text(strings.Repeat(" ", n)).append(l)
@@ -101,6 +111,18 @@ func (l line) at(x int) (action, int) {
 		h := l.hots[i]
 		if x >= h.x && (h.w < 0 || x < h.x+h.w) {
 			return h.do, x - h.x
+		}
+	}
+	return nil, 0
+}
+
+// menuAt is what a click of the right button on the cell x of the line does first, or nil when
+// no field is there.
+func (l line) menuAt(x int) (action, int) {
+	for i := len(l.hots) - 1; i >= 0; i-- {
+		h := l.hots[i]
+		if x >= h.x && (h.w < 0 || x < h.x+h.w) {
+			return h.menu, x - h.x
 		}
 	}
 	return nil, 0
@@ -161,9 +183,16 @@ type lastClick struct {
 // clicked handles a click: the left button does what the part of the line under it says. A
 // second click near the first, soon after it, is a double click.
 func (m Model) clicked(msg tea.MouseClickMsg) (Model, tea.Cmd) {
-	if msg.Button != tea.MouseLeft || m.width < minWidth || m.height < minHeight {
+	if m.width < minWidth || m.height < minHeight {
 		return m, nil
 	}
+	if msg.Button == tea.MouseRight {
+		return m.rightClicked(msg)
+	}
+	if msg.Button != tea.MouseLeft {
+		return m, nil
+	}
+	m.clip = nil
 	now := m.clock.Now()
 	last := m.lastClick
 	double := !last.at.IsZero() && now.Sub(last.at) <= doubleClick && msg.Y == last.y &&
@@ -179,10 +208,13 @@ func (m Model) clicked(msg tea.MouseClickMsg) (Model, tea.Cmd) {
 	}
 	lines := m.draw()
 	if msg.Y < 0 || msg.Y >= len(lines) || msg.X < 0 || msg.X >= m.width {
+		m.menu = nil
 		return m, nil
 	}
 	do, x := lines[msg.Y].at(msg.X)
 	if do == nil {
+		// A click beside an open menu closes it.
+		m.menu = nil
 		return m, nil
 	}
 	m.message, m.isError = "", false
@@ -200,7 +232,7 @@ func (m Model) wheeled(msg tea.MouseWheelMsg) (Model, tea.Cmd) {
 	case tea.MouseWheelDown:
 		delta = wheelStep
 	}
-	if delta == 0 || m.ask != nil {
+	if delta == 0 || m.ask != nil || m.menu != nil {
 		return m, nil
 	}
 	switch {

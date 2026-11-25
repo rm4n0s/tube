@@ -83,6 +83,11 @@ type App struct {
 	tempDir string
 	edits   map[string]string
 
+	// addFolder is the folder of the profile file that was added last, or "": the add page
+	// starts there (state.go).
+	stateMu   sync.Mutex
+	addFolder string
+
 	// subs are the subscribers to the changes of the profiles.
 	subsMu  sync.Mutex
 	subs    map[int]func()
@@ -113,6 +118,7 @@ func Open(ctx context.Context, opts Options) (*App, error) {
 		edits: map[string]string{}, subs: map[int]func(){},
 	}
 	log.Info("tube started", "version", Version())
+	a.loadState(ctx)
 	return a, nil
 }
 

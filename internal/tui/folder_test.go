@@ -120,6 +120,13 @@ func TestShowPathAndCrumbs(t *testing.T) {
 	}
 }
 
+// sampleIn is the sample whose last add was in dir: the add page starts there.
+func sampleIn(dir string) *apptest.Fake {
+	f := apptest.Sample()
+	f.Snap.AddFolder = dir
+	return f
+}
+
 // folderState is the folder of the add page, the selected name, the File field and the focus.
 func (h *harness) folderState() (dir, selected, path string, focus int) {
 	p := h.m().add
@@ -139,7 +146,7 @@ func (h *harness) wantFolder(dir, selected, path string, focus int) {
 }
 
 func TestBrowseWithTheKeys(t *testing.T) {
-	f := apptest.Sample()
+	f := sampleIn(sampleCwd)
 	h := newHarness(t, f, 100, 30)
 	h.key("a")
 	h.wantFolder(sampleCwd, "archive", "", addFocusFolder)
@@ -169,16 +176,49 @@ func TestBrowseWithTheKeys(t *testing.T) {
 		t.Errorf("Calls = %q", got)
 	}
 	h.has("Added Office.")
-	// The next add starts in the folder of the last one.
+}
+
+func TestWhereTheAddPageStarts(t *testing.T) {
+	gone := "/home/ada/gone"
+	tests := []struct {
+		name, remembered, home, cwd string
+		wantDir, wantSelected       string
+	}{
+		{"the home folder", "", sampleHome, sampleCwd, sampleHome, "Documents"},
+		{"the folder of the last add", sampleCwd + "/vpn", sampleHome, sampleCwd, sampleCwd + "/vpn", "lab.ovpn"},
+		{"a remembered folder that is gone: the home folder", gone, sampleHome, sampleCwd, sampleHome, "Documents"},
+		{"no home folder: the working folder", "", "", sampleCwd, sampleCwd, "archive"},
+		{"a home folder that cannot be read is shown as it is", "", "/root", sampleCwd, "/root", ".."},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := newHarness(t, sampleIn(tt.remembered), 100, 30)
+			m := h.m()
+			m.home, m.cwd = tt.home, tt.cwd
+			h.model = m
+			h.key("a")
+			h.wantFolder(tt.wantDir, tt.wantSelected, "", addFocusFolder)
+		})
+	}
+	// The snapshot that comes after an add has the folder of that add: the next add starts
+	// there, without a new start of Tube.
+	f := apptest.Sample()
+	h := newHarness(t, f, 100, 30)
 	h.key("a")
-	h.keys("down", "enter")
-	h.key("esc")
+	h.wantFolder(sampleHome, "Documents", "", addFocusFolder)
+	h.keys("down", "enter", "end", "enter", "enter")
+	if got := f.Calls(); !slices.Equal(got, []string{"AddProfile(~/Downloads/work.ovpn, , false)"}) {
+		t.Fatalf("Calls = %q", got)
+	}
+	f.Snap.AddFolder = sampleCwd
+	f.Emit()
+	h.changed()
 	h.key("a")
 	h.wantFolder(sampleCwd, "archive", "", addFocusFolder)
 }
 
 func TestBrowseWithTheMouse(t *testing.T) {
-	f := apptest.Sample()
+	f := sampleIn(sampleCwd)
 	h := newHarness(t, f, 100, 30)
 	h.clickOn("a add")
 	h.clickOn("vpn/")
@@ -222,7 +262,7 @@ func TestTheWheelScrollsTheFolder(t *testing.T) {
 	for i := range 60 {
 		dirs[sampleCwd] = append(dirs[sampleCwd], dirEntry{fmt.Sprintf("p%02d.ovpn", i), false})
 	}
-	h := newHarness(t, apptest.Sample(), 100, 30)
+	h := newHarness(t, sampleIn(sampleCwd), 100, 30)
 	m := h.m()
 	m.readDir = fakeDirs(dirs)
 	h.model = m
@@ -277,7 +317,7 @@ func TestTheListFollowsTheFile(t *testing.T) {
 }
 
 func TestAllFiles(t *testing.T) {
-	h := newHarness(t, apptest.Sample(), 100, 30)
+	h := newHarness(t, sampleIn(sampleCwd), 100, 30)
 	h.key("a")
 	h.keys("down", "down")
 	if strings.Contains(h.screen(), "readme.txt") {
@@ -350,7 +390,7 @@ func TestTheFocusOfTheAddPage(t *testing.T) {
 }
 
 func TestTheAddPageIsBusy(t *testing.T) {
-	f := apptest.Sample()
+	f := sampleIn(sampleCwd)
 	f.Block = map[string]chan struct{}{"AddProfile": make(chan struct{})}
 	h := newHarness(t, f, 100, 30)
 	h.key("a")
@@ -373,9 +413,8 @@ func TestTheAddPageIsBusy(t *testing.T) {
 func TestALongFolder(t *testing.T) {
 	deep := sampleHome + strings.Repeat("/a-folder-with-a-long-name", 8) + "/東京"
 	for _, width := range []int{40, 60, 100} {
-		h := newHarness(t, apptest.Sample(), width, 30)
+		h := newHarness(t, sampleIn(deep), width, 30)
 		m := h.m()
-		m.cwd = deep
 		m.readDir = fakeDirs(map[string][]dirEntry{deep: {{"x.ovpn", false}}})
 		h.model = m
 		h.key("a")
@@ -402,7 +441,7 @@ func TestAFolderWithAnUnsafeName(t *testing.T) {
 	evil := "/srv/\x1b[31mred\x07/vpn"
 	h := newHarness(t, apptest.Sample(), 100, 30)
 	m := h.m()
-	m.cwd = evil
+	m.home, m.cwd = "", evil
 	m.readDir = fakeDirs(map[string][]dirEntry{evil: {{"x.ovpn", false}, {"\x1b]0;title\x07.ovpn", false}, {"bad\u202eevil", true}}})
 	h.model = m
 	h.key("a")

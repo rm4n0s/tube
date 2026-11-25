@@ -239,6 +239,9 @@ func (m Model) profileBody() []line {
 	return m.withField(lines)
 }
 
+// keepFocus is what a click of the right button does on a field that has the focus already.
+func keepFocus(m Model, _ click) (Model, tea.Cmd) { return m, nil }
+
 // withField adds the open field under the lines, cutting the lines when the page is too short.
 // A click in the field moves its cursor.
 func (m Model) withField(lines []line) []line {
@@ -259,7 +262,7 @@ func (m Model) withField(lines []line) []line {
 	f := []line{
 		{},
 		text("  " + m.styles.labelOn.Render(fieldLabels[pp.open])),
-		text("  ").append(text(pp.field.view(width, !pp.busy, m.styles)).whole(click)),
+		text("  ").append(text(pp.field.view(width, !pp.busy, m.styles)).field(click, keepFocus)),
 	}
 	if keep := m.pageHeight() - len(f); len(lines) > keep {
 		lines = lines[:max(keep, 0)]

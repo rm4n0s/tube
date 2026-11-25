@@ -1,0 +1,30 @@
+ Tube   select a profile to run true
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  The profile Work asks for a user name and a password.
+
+  User name  ada-from-the-clipboard
+  Password   **
+             ╭───────╮
+  [x] remembe│ Paste │r name
+             ╰───────╯
+  [ Connect ]  [ Cancel ]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+enter paste   esc close

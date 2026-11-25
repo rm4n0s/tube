@@ -143,3 +143,14 @@ Expected, in the first run: the name `Tube` and the selected row are on violet, 
 ```
 
 Expected: a double click on a real profile connects and runs `ping` (one click only selects it); clicks on `Output`, `Network` and `Status` show the tabs; the wheel scrolls the Output tab and `end` (a click on it) follows again; on the Network tab, a click on `x disconnect` and on `[y] Disconnect` takes the network away, and a double click on the profile gives it back; a click on `q quit` and `[y] Stop and quit` ends it.
+
+## The menu of a field, the stars and the folder of the last add (a change outside the steps, 2026-11-25): your terminal and your clipboard
+
+The tests give the model a clipboard of their own and the proofs a `wl-paste` of their own; only your desktop shows the real one.
+
+```sh
+go build -o tube ./cmd/tube
+./tube firefox -P tube-check --no-remote
+```
+
+Expected: `a` opens the add page on your home folder the first time; after you added a profile from another folder, `a` opens on that folder, also after you started Tube again. On the login page of a profile with a password: copy the user name where your provider shows it (only what is after `Username:`), click the right button in the User name field: a menu with `Paste` opens under the mouse; a click on `Paste` puts the text in the field. The same for the password, which is drawn as stars, as many as it has characters, and never as its characters. With nothing copied (or a picture), the right click opens no menu, and the message line says `The clipboard has no text.` Then `enter`: Tube connects, and the first line shows the rates (`↓`, `↑`) also when the name of the profile is long.

@@ -53,7 +53,11 @@ func (m Model) draw() []line {
 	lines := make([]line, 0, m.height)
 	lines = append(lines, m.title(), m.rule())
 	lines = append(lines, m.paged(m.body(), m.pageHeight())...)
-	return append(lines, m.rule(), m.messageLine(), m.footer())
+	lines = append(lines, m.rule(), m.messageLine(), m.footer())
+	if m.menu != nil {
+		return m.withMenu(lines)
+	}
+	return lines
 }
 
 // paged is the page in exactly height lines. Under an open question nothing of the page can be
@@ -105,6 +109,8 @@ func (m Model) footer() line {
 	p := m.page
 	prof, ok := m.profile()
 	switch {
+	case m.menu != nil:
+		p = pageMenu
 	case m.ask != nil:
 		p = pageQuestion
 	case p == pageProfile && m.prof.open != noField:

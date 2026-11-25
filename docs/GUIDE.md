@@ -47,8 +47,9 @@ tube
 The first page is the list of your profiles. Press `a` to add one (or click on `a add` on the
 last line: see "The mouse").
 
-The add page shows **the folder** that you started Tube in: `../` (the folder above), its
-folders, and its `.ovpn` files. Walk to the file:
+The add page shows **a folder**: `../` (the folder above), its folders, and its `.ovpn` files.
+The first time it is your home folder; afterwards it is the folder of the profile that you added
+last, also after you started Tube again. Walk to the file:
 
 - With the mouse: a double click opens a folder; a click on a folder of the path on the upper
   edge of the box goes back to it; the wheel scrolls. A click on the `.ovpn` file writes it in
@@ -124,6 +125,8 @@ Everything in Tube can be done with the keys, and with the mouse:
   the Network tab, and opens a folder on the add page. One click never connects or runs
   anything.
 - The **wheel** scrolls a list, and the Output tab.
+- A click of the **right button** in a text field opens a menu with `Paste`, when the clipboard
+  has text (see "A password").
 
 While Tube is open, the mouse belongs to it. To select text with the mouse, to copy it, hold
 `shift` while you drag: your terminal then selects, as it does in other full-screen programs.
@@ -208,9 +211,22 @@ means "the ones that the VPN sends".
 
 A profile that asks for a user name and a password opens the login page before it connects. The
 user name is filled in when it was remembered, and "remember the user name" is on by default
-(`space` turns it). The password is drawn as nothing: no characters and no dots. It is kept in
-memory only, for connecting again after the VPN dropped, and **Tube never writes it to a file**.
-You type it each time.
+(`space` turns it). The password is drawn as stars, one `*` for each character, never as the
+characters. It is kept in memory only, for connecting again after the VPN dropped, and **Tube
+never writes it to a file**. You give it each time.
+
+You do not have to type them. Copy the user name (or the password) where your provider shows
+it, **click the right button of the mouse in the field**, and click `Paste` in the menu that
+opens (or press `enter`). Do the same for the other field. The menu opens only when the
+clipboard has text, and it never shows that text. Tube reads the clipboard with `wl-paste` (the
+package `wl-clipboard`) on Wayland, or with `xclip` or `xsel` on X11; without one of them it
+asks your terminal, and many terminals do not answer: the message line then says so, and you
+paste with your terminal's own key (often `ctrl+shift+v`), which always works. Every other text
+field has the same menu.
+
+A provider's page often shows the two as `Username: ...` and `Password: ...`. Give only what is
+after the label: with the label, the server refuses the login. The same holds for the file of
+`--auth-file`: the user name alone on the first line, the password alone on the second.
 
 With `--profile`, Tube asks on the terminal: the user name when none is remembered, then the
 password, without echo. For scripts, give a file with the user name on the first line and the

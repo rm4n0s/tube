@@ -40,6 +40,9 @@ type Snapshot struct {
 	Profiles []Profile
 	// Now is the clock's time, for "3 days ago".
 	Now time.Time
+	// AddFolder is the folder of the profile file that was added last, in this run or in one
+	// before it: an absolute path that is safe to draw, or "". The add page starts there.
+	AddFolder string
 }
 
 // Snapshot returns what the TUI draws from.
@@ -48,7 +51,7 @@ func (a *App) Snapshot(ctx context.Context) (Snapshot, error) {
 	if err != nil {
 		return Snapshot{}, err
 	}
-	snap := Snapshot{Now: a.opts.Clock.Now()}
+	snap := Snapshot{Now: a.opts.Clock.Now(), AddFolder: a.lastAddFolder()}
 	for _, s := range a.opts.Argv {
 		snap.Target = append(snap.Target, sanitize.Display(s, maxTargetPiece))
 	}

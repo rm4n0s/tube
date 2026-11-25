@@ -68,6 +68,7 @@ func (a *App) AddProfile(ctx context.Context, path, name string, withoutScripts 
 		return "", err
 	}
 	a.log.Info("profile added", "profile", p.ID, "name", p.Name)
+	a.rememberAddFolder(ctx, path)
 	a.notify()
 	return p.ID, nil
 }

@@ -1,0 +1,5 @@
+#!/bin/sh
+# The wl-paste of the proofs of the TUI (scripts/tui-proof.sh): it prints the file that
+# TUBE_PROOF_CLIPBOARD names, and never reads a clipboard. A proof puts this folder first in the
+# PATH of the program and gives it a WAYLAND_DISPLAY of its own.
+exec cat "$TUBE_PROOF_CLIPBOARD"

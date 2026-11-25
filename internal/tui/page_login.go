@@ -119,7 +119,8 @@ func (m Model) loginPaste(text string) Model {
 }
 
 // clickLogin is the click on a line of the login page: the line gets the focus; the cursor of a
-// field goes where the click was, and the mark of "remember" changes.
+// field goes where the click was (in the password too: its stars are as many as its
+// characters), and the mark of "remember" changes.
 func (m Model) clickLogin(focus, width int) action {
 	return func(m Model, c click) (Model, tea.Cmd) {
 		l := *m.login
@@ -128,9 +129,21 @@ func (m Model) clickLogin(focus, width int) action {
 		switch focus {
 		case focusUser:
 			l.user.click(c.x, width)
+		case focusPassword:
+			l.pass.click(c.x, width)
 		case focusRemember:
 			l.remember = !l.remember
 		}
+		return m, nil
+	}
+}
+
+// focusLogin gives a field of the login page the focus, for its menu.
+func focusLogin(focus int) action {
+	return func(m Model, _ click) (Model, tea.Cmd) {
+		l := *m.login
+		m.login = &l
+		l.focus = focus
 		return m, nil
 	}
 }
@@ -165,9 +178,9 @@ func (m Model) loginBody() []line {
 		text("  " + fit("The profile "+st.accent.Render(l.name)+" asks for a user name and a password.", max(m.width-4, 10))),
 		gap,
 		text(label(userLabel, focusUser)).
-			append(text(l.user.view(width, l.focus == focusUser, st)).whole(m.clickLogin(focusUser, width))),
+			append(text(l.user.view(width, l.focus == focusUser, st)).field(m.clickLogin(focusUser, width), focusLogin(focusUser))),
 		text(label(passwordLabel, focusPassword)).
-			append(text(l.pass.view(width, l.focus == focusPassword, st)).whole(m.clickLogin(focusPassword, width))),
+			append(text(l.pass.view(width, l.focus == focusPassword, st)).field(m.clickLogin(focusPassword, width), focusLogin(focusPassword))),
 		gap,
 		text("  ").button(remember, m.clickLogin(focusRemember, 0)),
 		gap,

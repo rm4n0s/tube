@@ -7,6 +7,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/rm4n0s/tube/internal/app"
 )
 
@@ -226,8 +227,13 @@ func (m Model) runView() []line {
 	return append(lines, m.rule(), m.messageLine(), m.runFooter())
 }
 
+// minHeaderName is the number of cells that the name of the profile keeps on line 0, at least,
+// before the rates and then the time of the state are left out.
+const minHeaderName = 8
+
 // runHeader is line 0: the application, the profile, the state and the rates. When it does not
-// fit, the rates go first, then the time of the state.
+// fit, the name of the profile is cut first, down to minHeaderName cells; then the rates go,
+// then the time of the state.
 func (m Model) runHeader() line {
 	st := m.run.state
 	sty := m.styles
@@ -235,24 +241,36 @@ func (m Model) runHeader() line {
 	if m.run.ended() {
 		who += sty.warn.Render(" ended (status " + strconv.Itoa(st.Exit) + ")")
 	}
-	if st.ProfileName != "" {
-		who += " through " + sty.title.Render(st.ProfileName)
-	}
 	base := m.badge() + "  " + who
+	// through is the profile, in the cells that tail leaves.
+	through := func(tail string) (string, bool) {
+		if st.ProfileName == "" {
+			return "", lipgloss.Width(base)+lipgloss.Width(tail) <= m.width
+		}
+		room := m.width - lipgloss.Width(base) - len(" through ") - lipgloss.Width(tail)
+		name := st.ProfileName
+		fits := room >= min(lipgloss.Width(name), minHeaderName)
+		if lipgloss.Width(name) > room {
+			name = ansi.Truncate(name, max(room, 1), ellipsis)
+		}
+		return " through " + sty.title.Render(name), fits
+	}
 	if m.run.ended() {
 		// The session closed the VPN with the application: it has no state, and no rates.
-		return text(base)
+		name, _ := through("")
+		return text(base + name)
 	}
 	word, timed := stateWords(st)
 	color := m.stateStyle(st.State)
 	rates := sty.down.Render("↓ "+rateText(st.Down.Rate)) + "  " + sty.up.Render("↑ "+rateText(st.Up.Rate))
-	short := base + "   " + color.Render(word)
-	for _, l := range []string{base + "   " + color.Render(timed) + "   " + rates, base + "   " + color.Render(timed), short} {
-		if lipgloss.Width(l) <= m.width {
-			return text(l)
+	short := "   " + color.Render(word)
+	for _, tail := range []string{"   " + color.Render(timed) + "   " + rates, "   " + color.Render(timed), short} {
+		if name, fits := through(tail); fits {
+			return text(base + name + tail)
 		}
 	}
-	return text(short)
+	name, _ := through(short)
+	return text(base + name + short)
 }
 
 // stateStyle is the style of a state of the VPN: well when it is connected, attention while it

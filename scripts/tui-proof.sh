@@ -4,12 +4,17 @@
 # text. The user's own tmux, its server and its configuration are never touched.
 #
 #   scripts/tui-proof.sh <out.txt> [--config <fixture dir>] [--config-in-place] [--size 100x30] [--wait-first <regex>]
+#                        [--env NAME=value]...
 #                        [--keys '<tmux keys>' | --text '<text>' | --wait '<regex>' |
-#                         --click '<text>' | --double-click '<text>']... -- [tube arguments]
+#                         --click '<text>' | --double-click '<text>' | --right-click '<text>']... -- [tube arguments]
 #
 #   --config <dir>       the configuration folder to copy in (scripts/testdata/three-profiles)
 #   --config-in-place    use the folder of --config as it is, not a copy: a profile added in one
 #                        call is there in the next
+#   --env NAME=value     a variable of the program's environment; may be given more than once.
+#                        The program never gets WAYLAND_DISPLAY or DISPLAY of the machine: a proof
+#                        does not read your clipboard. A proof of the menu of a field gives a
+#                        display of its own and a PATH with its own wl-paste
 #   --size <cols>x<rows> the size of the terminal; 100x30 by default
 #   --wait-first <re>    wait until a line of the screen matches; "Tube" by default
 #   --keys '<keys>'      tmux key names (a Enter Escape C-c), separated by spaces; then 0.3 s
@@ -19,13 +24,14 @@
 #                        mouse on its first cell (the first line that has it); then 0.3 s. The text
 #                        must not come after a character that is two cells wide on its line
 #   --double-click '<text>'  the same, with two clicks
+#   --right-click '<text>'   the same, with the right button
 #
 # Each wait lasts 15 seconds at most; then the script fails and prints the screen. The steps run
 # in the order they are given. Exit status 64 for a mistake in these arguments.
 set -euo pipefail
 
 usage() {
-	echo "usage: scripts/tui-proof.sh <out.txt> [--config <dir>] [--config-in-place] [--size 100x30] [--wait-first <regex>] [--keys '<keys>' | --text '<text>' | --wait '<regex>' | --click '<text>' | --double-click '<text>']... -- [tube arguments]" >&2
+	echo "usage: scripts/tui-proof.sh <out.txt> [--config <dir>] [--config-in-place] [--size 100x30] [--wait-first <regex>] [--env NAME=value]... [--keys '<keys>' | --text '<text>' | --wait '<regex>' | --click '<text>' | --double-click '<text>' | --right-click '<text>']... -- [tube arguments]" >&2
 	exit 64
 }
 
@@ -44,12 +50,17 @@ in_place=0
 size="100x30"
 wait_first="Tube"
 steps=()
+envs=()
 while [[ $# -gt 0 ]]; do
 	case "$1" in
-	--config | --size | --wait-first | --keys | --text | --wait | --click | --double-click)
+	--config | --size | --wait-first | --env | --keys | --text | --wait | --click | --double-click | --right-click)
 		[[ $# -ge 2 ]] || usage
 		case "$1" in
 		--config) config="$2" ;;
+		--env)
+			[[ "$2" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] || usage
+			envs+=("$2")
+			;;
 		--size) size="$2" ;;
 		--wait-first) wait_first="$2" ;;
 		*) steps+=("$1" "$2") ;;
@@ -86,16 +97,18 @@ trap cleanup EXIT
 (cd "$root" && go build -o "$tmp/tube" ./cmd/tube)
 
 isolated=("$root/scripts/isolated.sh")
-program=("$tmp/tube")
+# Without the displays of the machine, the program has no clipboard of the user to read.
+program=(env -u WAYLAND_DISPLAY -u DISPLAY "${envs[@]}")
 if [[ $in_place -eq 1 ]]; then
 	[[ -n "$config" && -d "$config" ]] || {
 		echo "tui-proof.sh: --config-in-place needs the folder of --config" >&2
 		exit 64
 	}
-	program=(env "TUBE_CONFIG_DIR=$(cd "$config" && pwd)" "$tmp/tube")
+	program+=("TUBE_CONFIG_DIR=$(cd "$config" && pwd)")
 elif [[ -n "$config" ]]; then
 	isolated+=(--config "$config")
 fi
+program+=("$tmp/tube")
 command="exec timeout -k 2 120 $(printf '%q ' "${isolated[@]}" -- "${program[@]}" "$@")"
 tm new-session -d -s proof -x "$cols" -y "$rows" "$command"
 tm set-option -t proof remain-on-exit on >/dev/null
@@ -115,10 +128,11 @@ wait_for() {
 	exit 1
 }
 
-# click_on clicks the left button, times times, on the first cell of the text: the press and the
-# release of the button, as a terminal reports them (SGR), go to the program as it reads them.
+# click_on clicks a button of the mouse (0 is the left one, 2 the right one), times times, on the
+# first cell of the text: the press and the release of the button, as a terminal reports them
+# (SGR), go to the program as it reads them.
 click_on() {
-	local text="$1" times="$2" row=0 line before col
+	local text="$1" times="$2" button="${3:-0}" row=0 line before col
 	for _ in $(seq 1 150); do
 		if screen | grep -qF -- "$text"; then
 			break
@@ -131,7 +145,7 @@ click_on() {
 			before="${line%%"$text"*}"
 			col=$((${#before} + 1))
 			for _ in $(seq 1 "$times"); do
-				tm send-keys -t proof -l $'\e'"[<0;${col};${row}M"$'\e'"[<0;${col};${row}m"
+				tm send-keys -t proof -l $'\e'"[<${button};${col};${row}M"$'\e'"[<${button};${col};${row}m"
 			done
 			sleep 0.3
 			return 0
@@ -157,6 +171,7 @@ while [[ $i -lt ${#steps[@]} ]]; do
 	--wait) wait_for "$value" ;;
 	--click) click_on "$value" 1 ;;
 	--double-click) click_on "$value" 2 ;;
+	--right-click) click_on "$value" 1 2 ;;
 	esac
 	i=$((i + 2))
 done
