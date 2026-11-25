@@ -9,8 +9,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/rm4n0s/tube/internal/app"
 	"github.com/rm4n0s/tube/internal/app/apptest"
@@ -25,14 +27,38 @@ var updateGoldens = flag.Bool("update-goldens", false, "rewrite the golden files
 type harness struct {
 	t     *testing.T
 	model tea.Model
+	clock *clock.Fake
 	quit  bool
+}
+
+// The folders of the harness: no test reads the folders of the machine through the add page,
+// unless it sets the model's readDir itself.
+const (
+	sampleHome = "/home/ada"
+	sampleCwd  = "/home/ada/Downloads"
+)
+
+// sampleDirs are the folders that the add page of the harness shows.
+func sampleDirs() map[string][]dirEntry {
+	return map[string][]dirEntry{
+		"/":                           {{"home", true}, {"etc", true}},
+		"/home":                       {{"ada", true}},
+		"/home/ada":                   {{"Downloads", true}, {"Documents", true}, {".config", true}, {"notes.txt", false}},
+		sampleCwd:                     {{"work.ovpn", false}, {"vpn", true}, {"Home.ovpn", false}, {"readme.txt", false}, {".old.ovpn", false}, {"archive", true}},
+		"/etc":                        {},
+		"/home/ada/Downloads/vpn":     {{"lab.ovpn", false}},
+		"/home/ada/Downloads/archive": {},
+	}
 }
 
 // newHarness makes a model over the app, on the fake clock of the sample, sizes it and reads
 // its snapshot.
 func newHarness(t *testing.T, a app.Application, width, height int) *harness {
 	t.Helper()
-	h := &harness{t: t, model: NewModel(context.Background(), a, clock.NewFake(apptest.SampleTime))}
+	clk := clock.NewFake(apptest.SampleTime)
+	m := NewModel(context.Background(), a, clk)
+	m.home, m.cwd, m.readDir = sampleHome, sampleCwd, fakeDirs(sampleDirs())
+	h := &harness{t: t, model: m, clock: clk}
 	h.resize(width, height)
 	h.run(h.model.Init())
 	return h
@@ -141,6 +167,54 @@ func (h *harness) paste(text string) {
 func (h *harness) resize(width, height int) {
 	h.t.Helper()
 	h.send(tea.WindowSizeMsg{Width: width, Height: height})
+}
+
+// find is the cell of the screen where the text begins; the test fails when it is not there.
+func (h *harness) find(text string) (x, y int) {
+	h.t.Helper()
+	for y, line := range strings.Split(h.screen(), "\n") {
+		if i := strings.Index(line, text); i >= 0 {
+			return lipgloss.Width(line[:i]), y
+		}
+	}
+	h.t.Fatalf("the screen has no %q to click on:\n%s", text, h.screen())
+	return 0, 0
+}
+
+// click clicks the left button on a cell. The clock goes on by a second first, so that two
+// clicks are never a double click.
+func (h *harness) click(x, y int) {
+	h.t.Helper()
+	h.clock.Advance(time.Second)
+	h.send(tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+}
+
+// clickOn clicks on the first cell of a text of the screen.
+func (h *harness) clickOn(text string) {
+	h.t.Helper()
+	x, y := h.find(text)
+	h.click(x, y)
+}
+
+// doubleClickOn clicks twice, a tenth of a second apart, on the first cell of a text.
+func (h *harness) doubleClickOn(text string) {
+	h.t.Helper()
+	x, y := h.find(text)
+	h.click(x, y)
+	h.clock.Advance(100 * time.Millisecond)
+	h.send(tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+}
+
+// wheel turns the wheel by notches: down for a number above 0, up for one below.
+func (h *harness) wheel(notches int) {
+	h.t.Helper()
+	button := tea.MouseWheelDown
+	if notches < 0 {
+		button, notches = tea.MouseWheelUp, -notches
+	}
+	for range notches {
+		h.send(tea.MouseWheelMsg{X: 1, Y: 1, Button: button})
+	}
 }
 
 // m is the model.

@@ -1,30 +1,30 @@
-Tube   profiles                                                                                     
+ Tube   profiles                                                                                    
 ────────────────────────────────────────────────────────────────────────────────────────────────────
-                                                                                                    
-  Path of the .ovpn file                                                                            
-  ~/bad.ovpn                                                                                        
-                                                                                                    
-  Name                                                                                              
-  the file's name                                                                                   
-                                                                                                    
+  ╭─ ~ ──────────────────────────────────────────────────────────────────────────────────────────╮  
+  │   ../                                                                                        │  
+  │ > Documents/                                                                                 │  
+  │   Downloads/                                                                                 │  
+  │                                                                                              │  
+  │                                                                                              │  
+  │                                                                                              │  
+  │                                                                                              │  
+  │                                                                                              │  
+  │                                                                                              │  
+  │                                                                                              │  
+  │                                                                                              │  
+  │                                                                                              │  
+  │                                                                                              │  
+  │                                                                                              │  
+  │                                                                                              │  
+  │                                                                                              │  
+  │                                                                                              │  
+  │                                                                                              │  
+  ╰──────────────────────────────────────────────────────────────────────────────────────────────╯  
+  File  ~/bad.ovpn                                                                                  
+  Name  bad                                                                                         
   The profile uses the option "comp-lzo" on line 3, which Tube does not support: compression is     
   not supported. (UnsupportedOption)                                                                
-                                                                                                    
-                                                                                                    
-                                                                                                    
-                                                                                                    
-                                                                                                    
-                                                                                                    
-                                                                                                    
-                                                                                                    
-                                                                                                    
-                                                                                                    
-                                                                                                    
-                                                                                                    
-                                                                                                    
-                                                                                                    
-                                                                                                    
-                                                                                                    
+  [ Add ]  [ Cancel ]    [ ] all files                                                              
 ────────────────────────────────────────────────────────────────────────────────────────────────────
                                                                                                     
 tab complete   ↑↓ field   enter add   esc back                                                      

@@ -1,7 +1,8 @@
-Tube   select a profile to run firefox                                                              
+ Tube   select a profile to run firefox                                                             
 ────────────────────────────────────────────────────────────────────────────────────────────────────
   Profiles — ↑↓ jk: move · enter: run · a: add · e: open · d: delete · ?: keys · q: quit            
-  Add — tab: complete · ↑↓: field · enter: add · esc: back                                          
+  Add: the folder — ↑↓: move · enter: open · backspace: folder above · tab: fields · esc: back      
+  Add: the fields — tab: complete · ↑↓: field · space: all files · enter: add · esc: back           
   Profile — r: rename · u: user · n: DNS · t: edit · d: delete · enter: run · esc: back             
   Login — tab ↑↓: field · space: remember · enter: connect · esc: back                              
   Connecting — esc: cancel                                                                          
@@ -12,15 +13,14 @@ Tube   select a profile to run firefox
   Field — enter: save · esc: cancel                                                                 
   Question — y: yes · n esc enter: no                                                               
   Keys — any key: close                                                                             
+  Mouse — click: select, or press the key or the button under it · double click: open, run or use · 
+  wheel: scroll · shift and drag: select text, as your terminal does                                
                                                                                                     
 Tube runs one application through a VPN, and only that application: nothing else of the machine uses
 it.                                                                                                 
 Without the VPN the application has no network at all: Tube never lets it use the machine's.        
 A program that hands its work to one that already runs (a second firefox, a terminal's server) is   
 not in the VPN.                                                                                     
-                                                                                                    
-                                                                                                    
-                                                                                                    
                                                                                                     
                                                                                                     
                                                                                                     

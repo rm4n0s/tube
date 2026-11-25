@@ -18,10 +18,11 @@ const (
 	pageRunStatus
 	pageRunOutput
 	pageRunNetwork
-	// pageQuestion and pageField are not pages: their keys are the ones of an open question,
-	// and of a field open on a profile's page.
+	// pageQuestion, pageField and pageFolder are not pages: their keys are the ones of an open
+	// question, of a field open on a profile's page, and of the list of a folder on the add page.
 	pageQuestion
 	pageField
+	pageFolder
 )
 
 // binding is a key, or keys, and what it does on a page.
@@ -50,8 +51,11 @@ func bindings(withTarget bool) []pageBindings {
 		{"Profiles", pageProfiles, []binding{
 			{"↑↓ jk", "move"}, enter, {"a", "add"}, {"e", "open"}, {"d", "delete"}, {"?", "keys"}, {"q", "quit"},
 		}},
-		{"Add", pageAdd, []binding{
-			{"tab", "complete"}, {"↑↓", "field"}, {"enter", "add"}, {"esc", "back"},
+		{"Add: the folder", pageFolder, []binding{
+			{"↑↓", "move"}, {"enter", "open"}, {"backspace", "folder above"}, {"tab", "fields"}, {"esc", "back"},
+		}},
+		{"Add: the fields", pageAdd, []binding{
+			{"tab", "complete"}, {"↑↓", "field"}, {"space", "all files"}, {"enter", "add"}, {"esc", "back"},
 		}},
 		{"Profile", pageProfile, profile},
 		{"Login", pageLogin, []binding{
@@ -87,4 +91,23 @@ func footerBindings(p page, withTarget bool) []binding {
 		return out
 	}
 	return nil
+}
+
+// namedKeys are the keys that the table writes with a name, and the name that Bubble Tea gives
+// them.
+var namedKeys = map[string]string{
+	"enter": "enter", "esc": "esc", "tab": "tab", "shift+tab": "shift+tab", "space": "space",
+	"backspace": "backspace", "pgup": "pgup", "pgdn": "pgdown", "home": "home", "end": "end",
+}
+
+// clickKey is the key that a click on a word of the table presses: a named key, or a key of one
+// ASCII character. It is "" for a word that is no single key ("↑↓", "jk", "other keys").
+func clickKey(word string) string {
+	if name, ok := namedKeys[word]; ok {
+		return name
+	}
+	if len(word) == 1 && word[0] > ' ' && word[0] < 0x7f {
+		return word
+	}
+	return ""
 }

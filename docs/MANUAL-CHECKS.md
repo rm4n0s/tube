@@ -123,3 +123,23 @@ On a machine (or a virtual machine) where ordinary users may not make user names
 ```
 
 Expected: both end at once, with status 125, and with the sentence `This machine does not let an ordinary user make a user namespace, which Tube needs. See docs/GUIDE.md ("What Tube needs"). (SandboxUserNamespaceDenied)`; the TUI does not open, and nothing asks for root.
+
+## The colors and the mouse (a change outside the steps, 2026-11-25): your terminal
+
+The tests click with messages and the proofs through tmux; only your own terminal shows how the colors look and whether its mouse arrives.
+
+```sh
+go build -o tube ./cmd/tube
+./tube
+NO_COLOR=1 ./tube
+```
+
+Expected, in the first run: the name `Tube` and the selected row are on violet, the servers blue, the keys of the last line cyan, and everything can be read on your background (try a light and a dark profile of your terminal, if you use both). A click on a profile selects it; the wheel scrolls a long list; a click on `a add` opens the add page, where a double click opens a folder, a click on an `.ovpn` file writes it in the File field, and `[ Cancel ]` goes back; holding `shift` while dragging selects text. In the second run: no color, and the selected row is reversed.
+
+## The colors and the mouse (b): an application through the VPN, with the mouse only
+
+```sh
+./tube ping -c 30 example.com
+```
+
+Expected: a double click on a real profile connects and runs `ping` (one click only selects it); clicks on `Output`, `Network` and `Status` show the tabs; the wheel scrolls the Output tab and `end` (a click on it) follows again; on the Network tab, a click on `x disconnect` and on `[y] Disconnect` takes the network away, and a double click on the profile gives it back; a click on `q quit` and `[y] Stop and quit` ends it.

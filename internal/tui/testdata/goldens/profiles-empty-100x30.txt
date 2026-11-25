@@ -1,4 +1,4 @@
-Tube   profiles                                                                                     
+ Tube   profiles                                                                                    
 ────────────────────────────────────────────────────────────────────────────────────────────────────
                                                                                                     
   No profiles yet. Press a to add an .ovpn file.                                                    

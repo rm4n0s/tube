@@ -1,15 +1,15 @@
-Tube   select a profile to run firefox                                                              
+ Tube   select a profile to run firefox                                                             
 ────────────────────────────────────────────────────────────────────────────────────────────────────
                                                                                                     
   The profile Work asks for a user name and a password.                                             
                                                                                                     
   User name                                                                                         
-                                                                                                    
-                                                                                                    
   Password                                                                                          
                                                                                                     
-                                                                                                    
   [x] remember the user name                                                                        
+                                                                                                    
+  [ Connect ]  [ Cancel ]                                                                           
+                                                                                                    
                                                                                                     
                                                                                                     
                                                                                                     

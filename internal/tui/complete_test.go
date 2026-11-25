@@ -5,6 +5,7 @@ package tui
 import (
 	"io/fs"
 	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 )
@@ -25,10 +26,14 @@ func (e dirEntry) Type() fs.FileMode {
 }
 func (e dirEntry) Info() (fs.FileInfo, error) { return nil, os.ErrNotExist }
 
-// fakeDirs is a readDir over folders in memory.
-func fakeDirs(dirs map[string][]dirEntry) func(string) ([]os.DirEntry, error) {
+// fakeDirs is a readDir over folders in memory; "/vpn/" and "/vpn" are the same folder.
+func fakeDirs(folders map[string][]dirEntry) func(string) ([]os.DirEntry, error) {
+	dirs := map[string][]dirEntry{}
+	for dir, entries := range folders {
+		dirs[filepath.Clean(dir)] = entries
+	}
 	return func(dir string) ([]os.DirEntry, error) {
-		entries, ok := dirs[dir]
+		entries, ok := dirs[filepath.Clean(dir)]
 		if !ok {
 			return nil, os.ErrPermission
 		}

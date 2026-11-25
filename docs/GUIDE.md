@@ -44,9 +44,27 @@ tube firefox
 tube
 ```
 
-The first page is the list of your profiles. Press `a` to add one. Type the path of the `.ovpn`
-file (`~` is your home folder, and `tab` completes the name of a file or a folder). Press `↓` and
-type a name, if you want another one than the file's name. Press `enter`.
+The first page is the list of your profiles. Press `a` to add one (or click on `a add` on the
+last line: see "The mouse").
+
+The add page shows **the folder** that you started Tube in: `../` (the folder above), its
+folders, and its `.ovpn` files. Walk to the file:
+
+- With the mouse: a double click opens a folder; a click on a folder of the path on the upper
+  edge of the box goes back to it; the wheel scrolls. A click on the `.ovpn` file writes it in
+  the **File** field. Then click on `[ Add ]`.
+- With the keys: `↑` and `↓` move, `enter` opens a folder, `backspace` goes to the folder above.
+  `enter` on the `.ovpn` file writes it in the File field and goes to the **Name** field; `enter`
+  there adds the profile.
+
+You can also type or paste the path: text that you type goes to the File field (`~` is your home
+folder, and `tab` completes the name of a file or a folder there), and the list follows what you
+type. In the Name field, type a name if you want another one than the file's name, which the
+field shows. `↑`, `↓` and `tab` go from one part of the page to the next.
+
+The list shows only folders and files whose name ends in `.ovpn`, and no hidden ones. To see
+every file (a profile that is called `client.conf`, a hidden folder), turn on `[ ] all files`
+with a click, or with `space` when it has the focus.
 
 Tube keeps a copy of the profile. It copies the `.ovpn` file and the files that it names, so the
 profile keeps working when you move or delete the file that you added it from. The files that a
@@ -76,6 +94,7 @@ The keys of the list:
 | `d` | delete the profile, after a question |
 | `?` | the keys of every page |
 | `q`, `ctrl+c` | quit |
+| a click, a double click | select the profile; a double click is `enter` |
 
 The profile's page (`e`) shows everything about the profile: its servers, whether it asks for a
 password, the remembered user name, the DNS servers, the files, and the options that Tube
@@ -94,6 +113,24 @@ ignores. Its keys:
 After `t`, Tube checks the text that you saved the way it checks a new profile. When the text is
 not valid, the profile stays as it was, and the message says why.
 
+## The mouse
+
+Everything in Tube can be done with the keys, and with the mouse:
+
+- A **click** selects a row of a list, shows a tab, presses a button such as `[ Add ]` or
+  `[y] Delete`, puts the cursor in a field, and changes a mark such as `[x] remember the user
+  name`. A click on a key of the last line (`a add`, `? keys`, `esc back`) presses that key.
+- A **double click** on a row is `enter` on it: it runs (or opens) a profile, uses a profile on
+  the Network tab, and opens a folder on the add page. One click never connects or runs
+  anything.
+- The **wheel** scrolls a list, and the Output tab.
+
+While Tube is open, the mouse belongs to it. To select text with the mouse, to copy it, hold
+`shift` while you drag: your terminal then selects, as it does in other full-screen programs.
+
+Tube has colors for a dark and for a light terminal, and asks your terminal which one it is. It
+follows `NO_COLOR`: without colors, the selected row is drawn reversed.
+
 ## Running an application
 
 ```
@@ -105,19 +142,19 @@ first (see "A password"). Tube connects, starts the application, and shows the r
 
 The first line says what runs, through which profile, the state of the VPN, and the traffic of
 the last second, down (`↓`) and up (`↑`). The second line has the tabs. `tab` goes to the next
-tab and `shift+tab` to the one before.
+tab and `shift+tab` to the one before; a click on a tab shows it.
 
 - **Status**: the application and whether it runs; the VPN and its state; the address, the DNS
   servers and the MTU of the tunnel; the bytes and packets each way, and the rates; the dropped
   packets; and Tube's events, such as "connected again", with their time.
-- **Output**: what the application prints, as plain lines. It follows the end; `pgup` and `pgdn`
-  scroll, `home` goes to the oldest line that is kept, and `end` follows again. **Every other key
+- **Output**: what the application prints, as plain lines. It follows the end; `pgup`, `pgdn`
+  and the wheel scroll, `home` goes to the oldest line that is kept, and `end` follows again. **Every other key
   goes to the application**, as if you typed it on its terminal: text, `enter`, `backspace`,
   `ctrl+c`, `ctrl+d`, `ctrl+u`, `esc`, and pasted text. So `ctrl+c` on this tab stops `ping`,
   and you can answer a program that asks a question.
 - **Network**: your profiles, with `*` and `in use` on the one that the application uses, and a
-  line that says what the application has now. Press `enter` on another profile to **switch** to
-  it. Tube connects the new profile first; the application keeps the old one until the new one is
+  line that says what the application has now. Press `enter` on another profile, or double-click
+  it, to **switch** to it. Tube connects the new profile first; the application keeps the old one until the new one is
   connected. When the new one fails, nothing changes. `esc` cancels a switch that is still
   connecting. Press `x` to **disconnect**: the application keeps running, without network, until
   you choose a profile with `enter`.

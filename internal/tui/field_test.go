@@ -19,7 +19,7 @@ func typed(f *field, text string) {
 }
 
 // press presses keys on the field, by their names.
-func press(f *field, names ...string) {
+func pressOn(f *field, names ...string) {
 	for _, n := range names {
 		f.key(keyMsg(n))
 	}
@@ -54,7 +54,7 @@ func TestFieldEditing(t *testing.T) {
 				if len(k) == 1 {
 					typed(&f, k)
 				} else {
-					press(&f, k)
+					pressOn(&f, k)
 				}
 			}
 			if f.value() != tt.want || f.cursor != tt.cursor {
@@ -65,7 +65,7 @@ func TestFieldEditing(t *testing.T) {
 	t.Run("ctrl+w in a path", func(t *testing.T) {
 		f := field{}
 		typed(&f, "/home/ada/x.ovpn")
-		press(&f, "ctrl+w")
+		pressOn(&f, "ctrl+w")
 		if f.value() != "/home/ada/" {
 			t.Errorf("the field is %q", f.value())
 		}
@@ -93,11 +93,11 @@ func TestFieldLimitAndPaste(t *testing.T) {
 }
 
 func TestFieldView(t *testing.T) {
-	st := newStyles()
+	st := newStyles(true, true)
 	f := field{}
 	typed(&f, strings.Repeat("abcdefghij", 5))
 	for _, keys := range [][]string{nil, {"home"}, {"right", "right", "right"}} {
-		press(&f, keys...)
+		pressOn(&f, keys...)
 		view := f.view(12, true, st)
 		if lipgloss.Width(view) != 12 {
 			t.Errorf("the view is %d cells wide", lipgloss.Width(view))
@@ -117,7 +117,7 @@ func TestFieldView(t *testing.T) {
 }
 
 func TestFieldSecret(t *testing.T) {
-	st := newStyles()
+	st := newStyles(true, true)
 	one, ten := field{secret: true}, field{secret: true}
 	typed(&one, "x")
 	typed(&ten, "hunter2!!!")

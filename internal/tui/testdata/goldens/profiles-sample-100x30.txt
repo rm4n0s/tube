@@ -1,4 +1,4 @@
-Tube   select a profile to run firefox                                                              
+ Tube   select a profile to run firefox                                                             
 ────────────────────────────────────────────────────────────────────────────────────────────────────
   Name                                    Server                                        Last used   
   0123456789abcdef                        broken: its profile cannot be read: a mistake on line 3   

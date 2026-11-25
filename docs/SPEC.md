@@ -36,6 +36,9 @@ Tube runs one application through a VPN, and only that application. This file is
 | D18 | In the TUI the application runs on a pseudo-terminal that Tube reads, with `TERM=dumb`. The Output tab shows what it prints as plain lines, and the keys typed on that tab go to the application | follows D16: the user's terminal belongs to the TUI, and a program whose output is a pipe holds its lines back; with the keys, Ctrl-C still stops `ping` |
 | D19 | With `--profile` there is no TUI and the application gets the user's own terminal | D13; a full-screen program (`vim`, `htop`, `ssh`) needs a real terminal, which the Output tab is not |
 | D20 | A switch to another profile connects the new one first and only then replaces the one in use; when the new one fails, nothing changes | the application keeps its network while the user waits; the gap is the moment of the replacement only |
+| D21 | The TUI is colorful: its own colors for the name of the program, the selected row, the tabs, the states of the VPN, the columns, the keys and the buttons, for a dark and for a light terminal | the user, 2026-11-25 ("I expect to be more colorful") |
+| D22 | The TUI is used with the mouse too: a click selects or presses, a double click opens, runs or uses, the wheel scrolls | the user, 2026-11-25 ("be able to use mouse") |
+| D23 | The add page shows the folders and the `.ovpn` files of a folder as a list that is walked through with the mouse or the keys, and the file is chosen there | the user, 2026-11-25 ("when adding ovpn path, I want to show a file browser that I can surf with my mouse") |
 
 ## 3. Platform and requirements
 
@@ -316,11 +319,15 @@ The commands block and take a context; the TUI calls each inside a command of it
 
 ## 13. The TUI
 
-Bubble Tea, on the alternate screen. One model; pages are values of it. Colors come from Lip Gloss and follow `NO_COLOR`. A terminal smaller than 40 columns by 10 rows shows only "The terminal is too small".
+Bubble Tea, on the alternate screen, with the mouse (§13.12). One model; pages are values of it. A terminal smaller than 40 columns by 10 rows shows only "The terminal is too small".
 
-### 13.1 Frame
+### 13.1 Frame and colors
 
-The first line: `Tube` and what will happen ("select a profile to run firefox", or "profiles"). The last line: the keys of the page. Above it, one line for a message or an error (red), which the next key clears.
+The first line: `Tube` and what will happen ("select a profile to run firefox", or "profiles"). The last line: the keys of the page. Above it, one line for a message (green) or an error (red), which the next key or click clears.
+
+The TUI has its own colors (D21), made with Lip Gloss: the name `Tube` and the selected row on violet; the application and the keys in cyan; a server, an address and what was sent in blue; what is well in green (connected, in use, what was received, an `.ovpn` file); what needs attention in yellow (connecting, a password, a question); an error and "no network" in red; what matters less in gray. There is one set of colors for a dark terminal and one for a light one: Tube asks the terminal for its background color when it starts, and takes a dark one when the terminal does not answer. The colors are given as 24 bits, and Bubble Tea brings them down to what the terminal has.
+
+**Color is only an addition.** What is selected also has `>` in front and is bold; the current tab is in brackets; a button is in brackets; an error starts with `Error:`; the profile in use has `*`. With `NO_COLOR`, or on a terminal without colors, what is selected is drawn reversed.
 
 ### 13.2 Profiles (the first page)
 
@@ -335,16 +342,33 @@ A list: name, server, `password` when the profile asks for one, last used. With 
 | `d` | delete, after a question |
 | `?` | the help page |
 | `q`, `Ctrl-C` | quit (status 0 without an application; 130 with one, as nothing ran) |
+| a click on a row | select it; a double click is `Enter` |
+| the wheel | scroll the list |
 
 The profile that was used last is selected when the page opens.
 
 ### 13.3 Add
 
-Two fields: the path of the `.ovpn` file (`~` is the home folder; `Tab` completes the name of a file or folder) and the name. `Enter` adds, `Esc` goes back. An error stays on the page, under the fields. The question of §6.2 about scripts appears here.
+From the top: **the list of a folder** (D23), the field **File** (the path of the `.ovpn` file; `~` is the home folder), the field **Name**, the error of the last add, and the buttons `[ Add ]`, `[ Cancel ]` and the mark `[ ] all files`. The question of §6.2 about scripts appears here. `Esc` goes back.
+
+**The list of a folder.** A box with the path of the folder on its upper edge, and in it: `../` (the folder above; not in `/`), then the folders, then the files, each sorted by name without case. Only the files whose name ends in `.ovpn` (any case) are listed, and no name that begins with a dot; with `all files` on, every name is. A link to a folder is a folder. A name that is not safe to draw (§6.5) is never listed. The list opens on the working folder of Tube, and, after an add, on the folder of that add. At most 10,000 names of a folder are read and 2,000 are listed; the lower edge then says so, and it says which rows are shown when not all fit. A folder that cannot be read says so; an empty one too. A terminal that is too short for a list of two rows shows the page without the list (and without `all files`).
+
+| In the list | What it does |
+|---|---|
+| `↑` `↓`, `PgUp` `PgDn`, `Home` `End`, the wheel | move |
+| `Enter`, a double click | on a folder: open it. On a file: write it in the File field and go to the Name field |
+| `→` | open the folder |
+| `Backspace`, `←` | the folder above, with the folder that was shown selected |
+| a click on a row | select it; a file is also written in the File field |
+| a click on a folder of the path on the upper edge | open that folder |
+| `Tab` | go to the File field (`Shift-Tab`: to `all files`) |
+| text | goes to the File field, which gets the focus; `/` and `~` start a new path there |
+
+**The fields.** The list follows the File field: it shows the folder of the path that is typed or pasted there, with the first name selected that begins like the last part of the path; and a folder that is opened in the list is written in the field. `Tab` in the File field completes the name of a file or folder as far as the names of its folder allow. `↑` and `↓` go from one part of the page to the next (list, File, Name, `all files`), `Tab` too outside the File field, and `Shift-Tab` back. A click in a field gives it the focus and puts the cursor there. The Name field shows, dim, the name that the profile gets when none is typed. `Space` on `all files`, or a click, changes the mark. `Enter` in a field or on `all files`, or a click on `[ Add ]`, adds; a click on `[ Cancel ]` is `Esc`. An error stays on the page, under the fields, until the next key or click. While an add runs, the page takes no key and no click.
 
 ### 13.4 The profile's page
 
-Shows: name, every remote, whether it asks for a password, the remembered user name, the DNS servers ("from the VPN" when none is set), the files, the options that are ignored. Keys: `r` rename, `u` user name, `n` DNS servers (each opens one text field on the page; `Enter` saves, `Esc` cancels), `t` edit the text, `d` delete, `Enter` connect and run (with an application), `Esc` back.
+Shows: name, every remote, whether it asks for a password, the remembered user name, the DNS servers ("from the VPN" when none is set), the files, the options that are ignored. Keys: `r` rename, `u` user name, `n` DNS servers (each opens one text field on the page; `Enter` saves, `Esc` cancels; a click in the field puts the cursor there), `t` edit the text, `d` delete, `Enter` connect and run (with an application), `Esc` back.
 
 ### 13.5 The editor
 
@@ -352,35 +376,35 @@ Shows: name, every remote, whether it asks for a password, the remembered user n
 
 ### 13.6 Login and connecting
 
-- A profile that asks for a password opens the login page first: user name (filled with the remembered one), password (drawn as nothing: no characters, no dots), and "remember the user name" (on by default). `Enter` connects, `Esc` goes back.
-- The connecting page shows the profile's name and the seconds that have passed. `Esc` cancels the connecting and goes back.
+- A profile that asks for a password opens the login page first: user name (filled with the remembered one), password (drawn as nothing: no characters, no dots), and "remember the user name" (on by default). `Enter` connects, `Esc` goes back. With the mouse: a click on a field gives it the focus (and puts the cursor of the user name there; the password field shows nothing, so a click moves nothing in it), a click on "remember" changes it, and the buttons `[ Connect ]` (`[ Use ]` when the page was opened from the Network tab) and `[ Cancel ]` are `Enter` and `Esc`.
+- The connecting page shows the profile's name and the seconds that have passed. `Esc`, or a click on `[ Cancel ]`, cancels the connecting and goes back.
 - When it fails: the error (§12.3) on the profiles page; a wrong password goes back to the login page with the user name kept.
 - When it succeeds: the time of use is saved, the application starts, and the run screen opens (§13.8).
 
 ### 13.7 Help
 
-`?` shows the keys of every page and tab, and three lines about what Tube does and §8.7. Any key closes it. (On the Output tab `?` goes to the application, as every key does there.)
+`?` shows the keys of every page and tab, what the mouse does, and three lines about what Tube does and §8.7. Any key or click closes it. (On the Output tab `?` goes to the application, as every key does there.)
 
 ### 13.8 The run screen and the Status tab
 
 While the application runs, and after it has ended until the user quits, the TUI shows the run screen:
 
 - The first line: the application, the profile in use, the state (`connected` and for how long, `connecting again…`, `disconnected`, `login refused`), and the rates down and up. After the application ended: that it ended, and its status.
-- The second line: the tabs, `Status`, `Output`, `Network`; the current one is in brackets. `Tab` goes to the next tab and `Shift-Tab` to the one before, on every tab.
+- The second line: the tabs, `Status`, `Output`, `Network`; the current one is in brackets. `Tab` goes to the next tab and `Shift-Tab` to the one before, on every tab; a click on a tab shows it.
 - The **Status** tab (the first one shown): the application and whether it runs; the profile and the state; the tunnel's addresses, the DNS servers in use and the MTU; for each direction the bytes and packets since the start and the rate of the last second; the dropped packets; and the events, which are Tube's lines (§10) with their time, the newest last.
 - Sizes are written with decimal units (`1.5 MB`, `80.0 kB/s`), times as `hh:mm:ss`.
 
 ### 13.9 The Output tab
 
-- It shows the last lines that the application printed, cut to the width. It follows the end; `PgUp` and `PgDn` scroll, `Home` goes to the oldest line that is kept (5000 are), `End` follows again.
+- It shows the last lines that the application printed, cut to the width. It follows the end; `PgUp` and `PgDn` scroll, the wheel scrolls three lines, `Home` goes to the oldest line that is kept (5000 are), `End` follows again (scrolling down to the end does too).
 - What the application writes is made into plain lines first (`internal/core/termlog`): a new line ends a line; a carriage return alone starts the line again (a progress bar is one line); a backspace takes a character away; a tab becomes spaces; escape sequences (colors, cursor moves, titles) and every other control or format character are dropped; a line is at most 1000 characters. Nothing that the application prints can move the TUI's cursor or change its colors.
-- **Every other key typed on this tab goes to the application**, as bytes written to its terminal: text as it is, Enter as a carriage return, Backspace, Ctrl-C, Ctrl-D, Ctrl-U, Escape; pasted text too. So Ctrl-C on this tab stops `ping`, and a program that asks a question can be answered. The terminal is a dumb one (D18): a program that wants the whole screen is run with `--profile`.
+- **Every other key typed on this tab goes to the application**, as bytes written to its terminal: text as it is, Enter as a carriage return, Backspace, Ctrl-C, Ctrl-D, Ctrl-U, Escape; pasted text too. So Ctrl-C on this tab stops `ping`, and a program that asks a question can be answered. The mouse never goes to the application: a click on the output does nothing. The terminal is a dumb one (D18): a program that wants the whole screen is run with `--profile`.
 - After the application ended, the keys go nowhere, and `q` quits.
 
 ### 13.10 The Network tab
 
 - The list of the profiles, with the one in use marked, and above it one line that says what the application has now: the profile it uses, or that it has no network and why (connecting again, disconnected, login refused).
-- `Enter` on a profile switches to it (D20): a profile that asks for a password opens the login page first; while the new profile connects, the one in use stays in use, and `Esc` cancels. When it is connected, it replaces the one in use. When it fails, the error is shown and nothing changes. When the application has no network, `Enter` on a profile (also the one last used) connects it.
+- `Enter` on a profile, or a double click on it, switches to it (D20): a profile that asks for a password opens the login page first; while the new profile connects, the one in use stays in use, and `Esc` cancels. When it is connected, it replaces the one in use. When it fails, the error is shown and nothing changes. When the application has no network, `Enter` on a profile (also the one last used) connects it.
 - `x` disconnects, after a question: the application keeps running without network, and Tube does not connect again until a profile is chosen.
 - Adding, changing and deleting profiles is not done here: it is done before a profile is selected (§13.2 to §13.5).
 
@@ -389,6 +413,17 @@ While the application runs, and after it has ended until the user quits, the TUI
 - While the application runs, `q` or `Ctrl-C` on the Status or the Network tab asks: "<application> is still running. Stop it and quit?" On yes, Tube stops the application (§12.4) and quits when it has ended; a second `Ctrl-C` quits at once.
 - After the application ended by itself, a message says so with its status, and `q` quits without a question.
 - Tube exits with the application's exit status.
+
+### 13.12 The mouse
+
+The TUI asks the terminal for the clicks and the wheel of the mouse (D22). Everything can still be done with the keys alone.
+
+- **A click of the left button** does what is under it: a row of a list is selected; a tab is shown; a button (`[ Add ]`, `[y] Delete`, ...) is pressed; a field gets the focus and its cursor; a mark (`[x]`) changes; and **a key on the last line is pressed**, by a click on the key or on the word next to it, so every key that the page names can be clicked. The other buttons of the mouse do nothing.
+- **A double click** (two clicks within half a second, on the same line and at most two cells apart) on a row is `Enter` on that row: run or open a profile, use it on the Network tab, open a folder or choose a file on the add page. One click never connects, runs or adds anything: a click that only gives the terminal's window the focus must not start an application.
+- **The wheel** scrolls the list of the page (the profiles, the folder, the Network tab) three rows, the selection staying inside what is shown, and the Output tab three lines.
+- While a question is open, only its two answers and the keys of the last line can be clicked, and the wheel does nothing.
+- What is clicked is always what is drawn: the page draws lines that know their parts that can be clicked, and a click is looked up in the same lines.
+- While the TUI has the mouse, the terminal does not select text with it. Terminals select text while `Shift` is held; the help page says so.
 
 ## 14. Security
 
@@ -429,11 +464,11 @@ Build tag `tube_server`, run under `scripts/vpn-ns.sh` (a private user and netwo
 
 ### 16.4 Tests of the TUI
 
-They drive the model directly: `Update` with key and window-size messages, then `View`, compared with golden text files, with a fake clock, a fixed color profile and the fake application of `apptest`. No terminal is needed.
+They drive the model directly: `Update` with key, mouse and window-size messages, then `View`, compared with golden text files, with a fake clock, a fixed color profile and the fake application of `apptest`. The golden files hold the text without its colors. The add page of these tests lists folders that are held in memory, not the folders of the machine; the tests of the real list read folders under `t.TempDir()`. No terminal is needed.
 
 ### 16.5 Proofs
 
-A step that says so makes a proof with `scripts/tui-proof.sh`: the real program, isolated, in a private tmux server, gets keys and the screen is saved as text in `docs/implemented-proof-images/`. A proof is looked at, not compared.
+A step that says so makes a proof with `scripts/tui-proof.sh`: the real program, isolated, in a private tmux server, gets keys and clicks of the mouse and the screen is saved as text in `docs/implemented-proof-images/`. A proof is looked at, not compared.
 
 ## 17. Known limits
 
@@ -443,6 +478,7 @@ A step that says so makes a proof with `scripts/tui-proof.sh`: the real program,
 - IPv6 works only when the VPN gives an IPv6 address; else the application has IPv4 only.
 - What gopenvpn-conn does not support is not supported: compression, proxies, static keys, encrypted private keys, challenge/response logins (its README lists them). The parser's error names the option.
 - In the TUI the application's terminal is a dumb one that shows plain lines: a program that draws the whole screen (`vim`, `htop`, `less`) or needs every key (`ssh` to a shell with completion) is run with `--profile`, which gives it the real terminal. With `--profile` there are no tabs, and the profile cannot be switched while the application runs.
+- While the TUI is open, the mouse belongs to it: the terminal selects text only while `Shift` is held (§13.12).
 - Flatpak and Snap applications are not tested.
 
 ## 18. Milestones

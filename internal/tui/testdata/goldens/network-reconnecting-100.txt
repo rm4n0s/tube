@@ -1,4 +1,4 @@
-Tube   firefox through Work   connecting again…   ↓ 1.2 MB/s  ↑ 80.0 kB/s                           
+ Tube   firefox through Work   connecting again…   ↓ 1.2 MB/s  ↑ 80.0 kB/s                          
 Status  Output  [Network]                                                                           
 ────────────────────────────────────────────────────────────────────────────────────────────────────
 firefox has no network: connecting again to Work…                                                   

@@ -8,7 +8,8 @@ tube firefox
 tube --profile work curl https://example.com
 ```
 
-`tube firefox` opens a terminal UI with your OpenVPN profiles (`.ovpn` files). You add, look at,
+`tube firefox` opens a terminal UI, in color, that you use with the keys or with the mouse. It
+has your OpenVPN profiles (`.ovpn` files): you add them (from a list of your folders), look at,
 change and delete them there, and select one. Tube connects to it and starts Firefox so that all
 of Firefox's network goes through that VPN: TCP, UDP, ICMP and the looking up of names. The
 terminal UI stays open while Firefox runs. It has three tabs:
@@ -23,8 +24,8 @@ Before the VPN is connected, and after it has ended, the application has no netw
 scripts and for programs that need the whole terminal.
 
 ```
-Tube   ping through test   connected 00:00:00   ↓ 0 B/s  ↑ 0 B/s
-[Status]  Output
+ Tube   ping through test   connected 00:00:00   ↓ 0 B/s  ↑ 0 B/s
+[Status]  Output  Network
 ────────────────────────────────────────────────────────────────────────────────────────────────────
 Application   ping, running
 VPN           test, connected for 00:00:00
@@ -32,12 +33,12 @@ Address       10.8.0.2/24
 DNS servers   -
 MTU           1500
 
-Received      168 B    2 packets   0 B/s
-Sent          168 B    2 packets   0 B/s
-Dropped       0 packets
+↓ Received    168 B    2 packets   0 B/s
+↑ Sent        168 B    2 packets   0 B/s
+  Dropped     0 packets
 ```
 
-(The first lines of `docs/implemented-proof-images/6.2-status.txt`, made with `scripts/tui-proof.sh`
+(The first lines of `docs/implemented-proof-images/ui-status.txt`, made with `scripts/tui-proof.sh`
 against a test server.)
 
 ## How it works

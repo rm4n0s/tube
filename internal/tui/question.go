@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 )
 
 // question is a question with two answers; the default is no: Enter never destroys anything.
@@ -37,28 +36,36 @@ func (q question) answer(name string) (yes, ok bool) {
 // maxQuestionWidth is the width of the box of a question, at most.
 const maxQuestionWidth = 64
 
-// box draws the question as a box for a page of width cells.
-func (q question) box(width int, st styles) []string {
+// box draws the question as a box for a page of width cells; a click on an answer gives it.
+func (q question) box(width int, st styles) []line {
 	inner := min(maxQuestionWidth, width-4) - 4
-	lines := wrap(q.text, inner)
-	lines = append(lines, "", st.key.Render("[y]")+" "+q.yes+"   "+st.key.Render("[n]")+" Cancel")
-	for i, l := range lines {
-		lines[i] = fit(l, inner)
+	edge := st.ask.Render
+	lines := []line{text(edge("╭" + strings.Repeat("─", inner+2) + "╮"))}
+	row := func(l line) line {
+		pad := strings.Repeat(" ", max(inner-l.w, 0))
+		return text(edge("│") + " ").append(l).add(pad + " " + edge("│"))
 	}
-	box := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1).Render(strings.Join(lines, "\n"))
-	return strings.Split(box, "\n")
+	for _, l := range wrap(q.text, inner) {
+		lines = append(lines, row(text(fit(l, inner))))
+	}
+	answers := line{}.button(st.buttonYes.Render("[y] "+q.yes), pressKey("y")).add("   ").
+		button(st.button.Render("[n] Cancel"), pressKey("n"))
+	if answers.w > inner {
+		answers = text(fit(answers.s, inner))
+	}
+	lines = append(lines, row(line{}), row(answers))
+	return append(lines, text(edge("╰"+strings.Repeat("─", inner+2)+"╯")))
 }
 
-// overlay draws the box over the middle of the page's lines, which are height lines of width
-// cells.
-func overlay(body []string, box []string, width, height int) []string {
-	out := make([]string, height)
+// overlay draws the box over the middle of the page's lines, which are width cells wide.
+func overlay(body []line, box []line, width int) []line {
+	out := make([]line, len(body))
 	copy(out, body)
-	top := max((height-len(box))/2, 0)
-	left := max((width-lipgloss.Width(box[0]))/2, 0)
-	for i, line := range box {
-		if top+i < height {
-			out[top+i] = strings.Repeat(" ", left) + line
+	top := max((len(body)-len(box))/2, 0)
+	left := max((width-box[0].w)/2, 0)
+	for i, l := range box {
+		if top+i < len(out) {
+			out[top+i] = l.indent(left)
 		}
 	}
 	return out

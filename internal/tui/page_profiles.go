@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/rm4n0s/tube/internal/app"
 )
 
@@ -19,6 +20,8 @@ const (
 	selectedMark   = "> "
 	unselectedMark = "  "
 	noProfiles     = "No profiles yet. Press a to add an .ovpn file."
+	// noProfilesAdd is the end of noProfiles: a click on it is the key a.
+	noProfilesAdd = "a to add an .ovpn file."
 )
 
 // listHeight is the number of rows of the list: the page without the line of the column names.
@@ -30,61 +33,83 @@ func (m Model) nameWidth() int {
 	return max(rest, minNameWidth)
 }
 
-// profilesBody is the list of profiles, under the names of the columns.
-func (m Model) profilesBody() []string {
+// profilesBody is the list of profiles, under the names of the columns. A click on a row selects
+// it, and a double click is enter.
+func (m Model) profilesBody() []line {
 	if len(m.snap.Profiles) == 0 {
 		if !m.loaded {
 			return nil
 		}
-		return []string{"", "  " + noProfiles}
+		return []line{{}, text("  "+noProfiles[:len(noProfiles)-len(noProfilesAdd)]).
+			button(m.styles.key.Render(noProfilesAdd), pressKey("a"))}
 	}
-	head := unselectedMark + fit("Name", m.nameWidth()) + columnGap + fit("Server", serverWidth) + columnGap +
-		fit("", passwordWidth) + columnGap + "Last used"
-	lines := []string{m.styles.dim.Render(head)}
+	lines := []line{m.profilesHead()}
 	lst := m.list
 	first, last := lst.window(m.listHeight())
 	for i := first; i < last; i++ {
-		row := m.profileRow(m.snap.Profiles[i], i == m.list.selected())
-		lines = append(lines, row)
+		p := m.snap.Profiles[i]
+		selected := i == m.list.selected()
+		row := m.profileRow(p, selected, selectedOrNot(selected), ago(m.now, p.LastUsed), m.styles.dim)
+		lines = append(lines, text(row).whole(m.clickRow(i)))
 	}
 	return lines
 }
 
-// profileRow is one row: "> Name   server   password   last used", or the name and why the
-// profile is broken.
-func (m Model) profileRow(p app.Profile, selected bool) string {
-	row := fit(m.profileRowWith(p, selected, ago(m.now, p.LastUsed)), m.width)
-	if selected {
-		return m.styles.selected.Render(row)
-	}
-	return row
+// profilesHead is the line of the names of the columns.
+func (m Model) profilesHead() line {
+	head := unselectedMark + fit("Name", m.nameWidth()) + columnGap + fit("Server", serverWidth) + columnGap +
+		fit("", passwordWidth) + columnGap + "Last used"
+	return text(m.styles.dim.Render(head))
 }
 
-// profileRowWith is a row with last in the last column, neither cut to the width nor styled.
-func (m Model) profileRowWith(p app.Profile, selected bool, last string) string {
-	mark := unselectedMark
+// selectedOrNot is the mark in front of a row.
+func selectedOrNot(selected bool) string {
 	if selected {
-		mark = selectedMark
+		return selectedMark
 	}
-	var row string
-	if p.Broken != "" {
-		row = mark + fit(p.Name, m.nameWidth()) + columnGap + "broken: " + p.Broken
-	} else {
-		server := ""
-		if len(p.Remotes) > 0 {
-			server = p.Remotes[0]
-			if len(p.Remotes) > 1 {
-				server += " +" + strconv.Itoa(len(p.Remotes)-1)
-			}
+	return unselectedMark
+}
+
+// clickRow is the click on the row i of the list of profiles: it selects the row, and a double
+// click is enter.
+func (m Model) clickRow(i int) action {
+	return func(m Model, c click) (Model, tea.Cmd) {
+		m.list.selectIndex(i)
+		if c.double {
+			return m.key(keyPress("enter"))
 		}
-		password := ""
-		if p.NeedsPassword {
-			password = "password"
-		}
-		row = mark + fit(p.Name, m.nameWidth()) + columnGap + fit(server, serverWidth) + columnGap +
-			fit(password, passwordWidth) + columnGap + last
+		return m, nil
 	}
-	return row
+}
+
+// profileRow is one row, cut to the width: "> Name   server   password   last used", or the
+// name and why the profile is broken. mark is its first two cells, and last its last column,
+// drawn with lastStyle. The selected row has one style; the columns of another have theirs.
+func (m Model) profileRow(p app.Profile, selected bool, mark, last string, lastStyle lipgloss.Style) string {
+	name := fit(p.Name, m.nameWidth())
+	server, password := "", ""
+	if len(p.Remotes) > 0 {
+		server = p.Remotes[0]
+		if len(p.Remotes) > 1 {
+			server += " +" + strconv.Itoa(len(p.Remotes)-1)
+		}
+	}
+	if p.NeedsPassword {
+		password = "password"
+	}
+	server, password = fit(server, serverWidth), fit(password, passwordWidth)
+	broken := "broken: " + p.Broken
+	st := m.styles
+	switch {
+	case selected && p.Broken != "":
+		return st.selected.Render(fit(mark+name+columnGap+broken, m.width))
+	case selected:
+		return st.selected.Render(fit(mark+name+columnGap+server+columnGap+password+columnGap+last, m.width))
+	case p.Broken != "":
+		return fit(st.ok.Render(mark)+name+columnGap+st.err.Render(broken), m.width)
+	}
+	return fit(st.ok.Render(mark)+name+columnGap+st.info.Render(server)+columnGap+st.warn.Render(password)+columnGap+
+		lastStyle.Render(last), m.width)
 }
 
 // profilesKey handles a key on the profiles page.
@@ -95,7 +120,7 @@ func (m Model) profilesKey(name string) (Model, tea.Cmd) {
 	case "?":
 		m.page, m.helpBack = pageHelp, pageProfiles
 	case "a":
-		return m.openAdd(), nil
+		return m.openAdd()
 	case "d":
 		if len(m.snap.Profiles) > 0 {
 			return m.askDelete(m.snap.Profiles[m.list.selected()]), nil

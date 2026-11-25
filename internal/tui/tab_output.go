@@ -21,28 +21,52 @@ var keyBytes = map[string]string{
 }
 
 // outputBody is the Output tab: the lines of the window, each cut to the width.
-func (m Model) outputBody() []string {
+func (m Model) outputBody() []line {
 	r := m.run
 	if r.outEnd == r.outFirst {
-		return []string{m.styles.dim.Render(noOutput)}
+		return []line{text(m.styles.dim.Render(noOutput))}
 	}
-	lines := make([]string, 0, len(r.lines))
+	lines := make([]line, 0, len(r.lines))
 	for _, l := range r.lines {
-		lines = append(lines, fit(clean(l), m.width))
+		lines = append(lines, text(fit(clean(l), m.width)))
 	}
 	return lines
 }
 
-// outputFooter is the keys line of the Output tab.
-func (m Model) outputFooter() string {
+// outputFooter is the keys line of the Output tab. The keys go to the application, so the line
+// says so; a click on a key of the line presses it.
+func (m Model) outputFooter() line {
 	r := m.run
+	sep := m.styles.dim.Render(" · ")
+	hint := func(key, name, what string) line {
+		return line{}.button(m.styles.key.Render(key)+": "+what, pressKey(name))
+	}
+	scroll := line{}.button(m.styles.key.Render("pgup"), pressKey("pgup")).add(" ").
+		button(m.styles.key.Render("pgdn"), pressKey("pgdown")).add(": scroll")
 	switch {
 	case !r.follow:
-		return "scrolled back · end: follow"
+		return text(m.styles.warn.Render("scrolled back")).add(sep).append(hint("end", "end", "follow"))
 	case r.ended():
-		return "q: quit · tab: next tab · pgup pgdn: scroll"
+		return hint("q", "q", "quit").add(sep).append(hint("tab", "tab", "next tab")).add(sep).append(scroll)
 	}
-	return "keys go to " + r.state.AppName + " · tab: next tab · pgup pgdn: scroll"
+	return text(m.styles.accent.Render("keys go to " + r.state.AppName)).add(sep).append(hint("tab", "tab", "next tab")).add(sep).append(scroll)
+}
+
+// scrollOutput moves the window of the output by delta lines; n is the height of the window.
+// Scrolling up stops following the end, and scrolling down to the end follows it again.
+func (r *runScreen) scrollOutput(delta, n int) {
+	if delta < 0 {
+		if r.follow {
+			r.hold = r.outEnd - n
+		}
+		r.hold = max(r.hold+delta, r.outFirst)
+		r.follow = false
+		return
+	}
+	if !r.follow {
+		r.hold += delta
+		r.follow = r.hold+n >= r.outEnd
+	}
 }
 
 // outputKey handles a key on the Output tab: the keys that scroll, and every other key goes to
@@ -53,17 +77,10 @@ func (m Model) outputKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	name := msg.String()
 	switch name {
 	case "pgup":
-		if r.follow {
-			r.hold = r.outEnd - n
-		}
-		r.hold = max(r.hold-n, r.outFirst)
-		r.follow = false
+		r.scrollOutput(-n, n)
 		return m, m.readRun()
 	case "pgdown":
-		if !r.follow {
-			r.hold += n
-			r.follow = r.hold+n >= r.outEnd
-		}
+		r.scrollOutput(n, n)
 		return m, m.readRun()
 	case "home":
 		r.hold, r.follow = r.outFirst, false

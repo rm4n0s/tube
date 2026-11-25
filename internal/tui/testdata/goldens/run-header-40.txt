@@ -1,4 +1,4 @@
-Tube   firefox through Work   connected 
+ Tube   firefox through Work   connected
 [Status]  Output  Network               
 ────────────────────────────────────────
 Application   firefox, running          

@@ -1,4 +1,4 @@
-Tube   firefox through Work   connected 00:12:31            
+ Tube   firefox through Work   connected 00:12:31           
 Status  Output  [Network]                                   
 ────────────────────────────────────────────────────────────
 firefox uses Work.                                          
@@ -13,4 +13,4 @@ firefox uses Work.
                                                             
 ────────────────────────────────────────────────────────────
                                                             
-tab shift+tab tabs   enter use   x disconnect   q quit   ? …
+tab shift+tab tabs  enter use  x disconnect  q quit  ? keys 

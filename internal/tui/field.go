@@ -8,6 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // field is a one-line text input: the text and a cursor.
@@ -95,24 +96,9 @@ func (f *field) key(msg tea.KeyPressMsg) bool {
 	return true
 }
 
-// view draws the field in width cells: the part of the text around the cursor, with the cursor
-// reversed when the field is focused. A secret field draws nothing of its text.
-func (f field) view(width int, focused bool, st styles) string {
-	cursor := st.selected.Render(" ")
-	switch {
-	case f.secret:
-		if focused {
-			return fit(cursor, width)
-		}
-		return fit("", width)
-	case len(f.text) == 0:
-		text := st.dim.Render(f.placeholder)
-		if focused {
-			text = cursor + text
-		}
-		return fit(text, width)
-	}
-	// The first character shown: the cursor, and as much before it as fits.
+// first is the first character that the field shows in width cells: the cursor is shown, and
+// as much before it as fits.
+func (f field) first(width int) int {
 	room := max(width-1, 1)
 	start, used := f.cursor, 0
 	for start > 0 {
@@ -123,9 +109,59 @@ func (f field) view(width int, focused bool, st styles) string {
 		used += w
 		start--
 	}
+	return start
+}
+
+// click puts the cursor on the character that is drawn on the cell x of a field of width cells.
+// A secret field draws nothing, so a click on it moves nothing.
+func (f *field) click(x, width int) {
+	if f.secret {
+		return
+	}
+	cells := 0
+	for i := f.first(width); i < len(f.text); i++ {
+		w := lipgloss.Width(string(f.text[i]))
+		if x < cells+w {
+			f.cursor = i
+			return
+		}
+		cells += w
+	}
+	f.cursor = len(f.text)
+}
+
+// view draws the field in width cells: the part of the text around the cursor, with the cursor
+// drawn as selected when the field is focused. A secret field draws nothing of its text.
+func (f field) view(width int, focused bool, st styles) string {
+	if width <= 0 {
+		return ""
+	}
+	cursor := st.selected.Render(" ")
+	blank := func(n int) string { return st.field.Render(strings.Repeat(" ", max(n, 0))) }
+	switch {
+	case f.secret:
+		if focused {
+			return cursor + blank(width-1)
+		}
+		return blank(width)
+	case len(f.text) == 0:
+		placeholder := f.placeholder
+		room := width
+		if focused {
+			room--
+		}
+		if lipgloss.Width(placeholder) > room {
+			placeholder = ansi.Truncate(placeholder, max(room, 0), ellipsis)
+		}
+		out := st.field.Inherit(st.dim).Render(placeholder) + blank(room-lipgloss.Width(placeholder))
+		if focused {
+			out = cursor + out
+		}
+		return out
+	}
 	var b strings.Builder
 	cells := 0
-	for i := start; i <= len(f.text); i++ {
+	for i := f.first(width); i <= len(f.text); i++ {
 		ch := " "
 		if i < len(f.text) {
 			ch = string(f.text[i])
@@ -134,12 +170,15 @@ func (f field) view(width int, focused bool, st styles) string {
 		if cells+w > width {
 			break
 		}
-		cells += w
-		if i == f.cursor && focused {
+		switch {
+		case i == f.cursor && focused:
 			b.WriteString(st.selected.Render(ch))
-		} else if i < len(f.text) {
-			b.WriteString(ch)
+		case i < len(f.text):
+			b.WriteString(st.field.Render(ch))
+		default:
+			continue
 		}
+		cells += w
 	}
-	return fit(b.String(), width)
+	return b.String() + blank(width-cells)
 }

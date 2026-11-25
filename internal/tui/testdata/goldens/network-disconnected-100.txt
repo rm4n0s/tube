@@ -1,4 +1,4 @@
-Tube   firefox through Work   disconnected   ↓ 1.2 MB/s  ↑ 80.0 kB/s                                
+ Tube   firefox through Work   disconnected   ↓ 1.2 MB/s  ↑ 80.0 kB/s                               
 Status  Output  [Network]                                                                           
 ────────────────────────────────────────────────────────────────────────────────────────────────────
 firefox has no network: disconnected.                                                               

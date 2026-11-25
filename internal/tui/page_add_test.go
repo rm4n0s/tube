@@ -66,12 +66,29 @@ func fixtureProfile(t *testing.T, dir, name string) string {
 }
 
 func TestGoldenAdd(t *testing.T) {
-	t.Run("empty", func(t *testing.T) {
+	sizes := []struct {
+		name          string
+		width, height int
+	}{{"100", 100, 30}, {"60", 60, 16}, {"40", 40, 10}}
+	for _, size := range sizes {
+		t.Run("empty "+size.name, func(t *testing.T) {
+			h := newHarness(t, apptest.Sample(), size.width, size.height)
+			h.key("a")
+			h.golden("add-empty-" + size.name)
+		})
+	}
+	t.Run("a file is chosen", func(t *testing.T) {
 		h := newHarness(t, apptest.Sample(), 100, 30)
 		h.key("a")
-		h.golden("add-empty")
+		h.keys("end", "enter")
+		h.golden("add-chosen")
 	})
-	t.Run("candidates", func(t *testing.T) {
+	t.Run("all files", func(t *testing.T) {
+		h := newHarness(t, apptest.Sample(), 100, 30)
+		h.keys("a", "shift+tab", "space")
+		h.golden("add-all-files")
+	})
+	t.Run("completed", func(t *testing.T) {
 		h := newHarness(t, apptest.Sample(), 100, 30)
 		m := h.m()
 		m.readDir = fakeDirs(map[string][]dirEntry{"/vpn/": {{"home.ovpn", false}, {"homelab.ovpn", false}, {"work.ovpn", false}}})
@@ -79,7 +96,7 @@ func TestGoldenAdd(t *testing.T) {
 		h.key("a")
 		h.typeText("/vpn/h")
 		h.key("tab")
-		h.golden("add-candidates")
+		h.golden("add-completed")
 		if got := h.m().add.path.value(); got != "/vpn/home" {
 			t.Errorf("the path is %q", got)
 		}

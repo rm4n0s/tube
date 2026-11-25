@@ -11,6 +11,9 @@ import (
 	"github.com/rm4n0s/tube/internal/app"
 )
 
+// inUseMark is the second cell of the row of the profile in use.
+const inUseMark = "*"
+
 // networkTop are the lines of the Network tab above the rows: what the application has, a blank
 // line, and the names of the columns.
 const networkTop = 3
@@ -46,40 +49,40 @@ func (m *Model) selectInUse() {
 func (m Model) networkLine() string {
 	r := m.run
 	st := r.state
+	sty := m.styles
 	if s := r.switching; s != nil {
 		if s.cancelling {
-			return cancelling
+			return sty.warn.Render(cancelling)
 		}
 		seconds := max(int(m.now.Sub(s.started)/time.Second), 0)
-		return "Connecting to " + s.name + "… " + strconv.Itoa(seconds) + " s   " + escCancels
+		return sty.warn.Render("Connecting to "+s.name+"… "+strconv.Itoa(seconds)+" s") + "   " + sty.dim.Render(escCancels)
 	}
 	switch {
 	case r.ended():
-		return st.AppName + " has ended."
+		return sty.warn.Render(st.AppName + " has ended.")
 	case st.State == "connected":
-		return st.AppName + " uses " + st.ProfileName + "."
+		return sty.ok.Render(st.AppName + " uses " + st.ProfileName + ".")
 	case st.State == "reconnecting":
-		return st.AppName + " has no network: connecting again to " + st.ProfileName + "…"
+		return sty.warn.Render(st.AppName + " has no network: connecting again to " + st.ProfileName + "…")
 	case st.State == "refused":
-		return st.AppName + " has no network: the server refused the login."
+		return sty.err.Render(st.AppName + " has no network: the server refused the login.")
 	}
-	return st.AppName + " has no network: disconnected."
+	return sty.err.Render(st.AppName + " has no network: disconnected.")
 }
 
 // networkBody is the Network tab: the line of what the application has, and the profiles, the
-// one in use marked.
-func (m Model) networkBody() []string {
-	lines := []string{m.networkLine(), ""}
+// one in use marked. A click on a row selects it, and a double click is enter.
+func (m Model) networkBody() []line {
+	lines := []line{text(m.networkLine()), {}}
 	if len(m.snap.Profiles) == 0 {
-		return append(lines, noProfiles)
+		return append(lines, text(noProfiles))
 	}
-	head := unselectedMark + fit("Name", m.nameWidth()) + columnGap + fit("Server", serverWidth) + columnGap +
-		fit("", passwordWidth) + columnGap + "Last used"
-	lines = append(lines, m.styles.dim.Render(head))
+	lines = append(lines, m.profilesHead())
 	lst := m.list
 	first, last := lst.window(m.netListHeight())
 	for i := first; i < last; i++ {
-		lines = append(lines, m.networkRow(m.snap.Profiles[i], i == m.list.selected()))
+		row := m.networkRow(m.snap.Profiles[i], i == m.list.selected())
+		lines = append(lines, text(row).whole(m.clickRow(i)))
 	}
 	return lines
 }
@@ -89,22 +92,15 @@ func (m Model) networkBody() []string {
 func (m Model) networkRow(p app.Profile, selected bool) string {
 	st := m.run.state
 	inUse := p.ID == st.ProfileID && !m.run.ended() && (st.State == "connected" || st.State == "reconnecting")
-	last := ago(m.now, p.LastUsed)
-	if inUse {
-		last = "in use"
-		if st.State == "reconnecting" {
-			last = "connecting again…"
-		}
+	mark := selectedOrNot(selected)
+	if !inUse {
+		return m.profileRow(p, selected, mark, ago(m.now, p.LastUsed), m.styles.dim)
 	}
-	row := m.profileRowWith(p, selected, last)
-	if inUse {
-		row = row[:1] + "*" + row[2:]
+	mark = mark[:1] + inUseMark
+	if st.State == "reconnecting" {
+		return m.profileRow(p, selected, mark, "connecting again…", m.styles.warn)
 	}
-	row = fit(row, m.width)
-	if selected {
-		return m.styles.selected.Render(row)
-	}
-	return row
+	return m.profileRow(p, selected, mark, "in use", m.styles.ok)
 }
 
 // networkKey handles a key on the Network tab.
@@ -224,12 +220,4 @@ func (m Model) askDisconnect() Model {
 		},
 	}
 	return m
-}
-
-// networkFooter is the keys line of the Network tab.
-func (m Model) networkFooter() string {
-	if m.run.switching != nil {
-		return m.styles.key.Render("esc") + " cancel"
-	}
-	return ""
 }

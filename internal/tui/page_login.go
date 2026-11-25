@@ -13,6 +13,9 @@ const (
 	passwordLabel   = "Password"
 	rememberText    = "remember the user name"
 	needBoth        = "Give the user name and the password."
+	connectButton   = "[ Connect ]"
+	useButton       = "[ Use ]"
+	loginLabelWidth = 11
 	maxPasswordLen  = 1024
 	loginFieldCount = 3
 )
@@ -115,28 +118,69 @@ func (m Model) loginPaste(text string) Model {
 	return m
 }
 
-// loginBody is the login page.
-func (m Model) loginBody() []string {
+// clickLogin is the click on a line of the login page: the line gets the focus; the cursor of a
+// field goes where the click was, and the mark of "remember" changes.
+func (m Model) clickLogin(focus, width int) action {
+	return func(m Model, c click) (Model, tea.Cmd) {
+		l := *m.login
+		m.login = &l
+		l.focus = focus
+		switch focus {
+		case focusUser:
+			l.user.click(c.x, width)
+		case focusRemember:
+			l.remember = !l.remember
+		}
+		return m, nil
+	}
+}
+
+// loginBody is the login page: the two fields, the mark of "remember", and the buttons. The
+// empty lines between them are left out on a terminal that is too short for them.
+func (m Model) loginBody() []line {
 	l := m.login
-	width := max(m.width-4, 10)
+	st := m.styles
+	width := max(m.width-4-loginLabelWidth, 4)
+	label := func(name string, focus int) string {
+		if l.focus == focus {
+			return "  " + st.labelOn.Render(fit(name, loginLabelWidth))
+		}
+		return "  " + st.label.Render(fit(name, loginLabelWidth))
+	}
 	box := "[ ]"
 	if l.remember {
 		box = "[x]"
 	}
 	remember := box + " " + rememberText
 	if l.focus == focusRemember {
-		remember = m.styles.selected.Render(remember)
+		remember = st.selected.Render(remember)
 	}
-	return []string{
-		"",
-		"  " + fit("The profile "+l.name+" asks for a user name and a password.", width),
-		"",
-		"  " + m.styles.title.Render(userLabel),
-		"  " + l.user.view(width, l.focus == focusUser, m.styles),
-		"",
-		"  " + m.styles.title.Render(passwordLabel),
-		"  " + l.pass.view(width, l.focus == focusPassword, m.styles),
-		"",
-		"  " + remember,
+	connect := connectButton
+	if l.forSwitch {
+		connect = useButton
 	}
+	gap := line{}
+	lines := []line{
+		gap,
+		text("  " + fit("The profile "+st.accent.Render(l.name)+" asks for a user name and a password.", max(m.width-4, 10))),
+		gap,
+		text(label(userLabel, focusUser)).
+			append(text(l.user.view(width, l.focus == focusUser, st)).whole(m.clickLogin(focusUser, width))),
+		text(label(passwordLabel, focusPassword)).
+			append(text(l.pass.view(width, l.focus == focusPassword, st)).whole(m.clickLogin(focusPassword, width))),
+		gap,
+		text("  ").button(remember, m.clickLogin(focusRemember, 0)),
+		gap,
+		text("  ").button(st.buttonMain.Render(connect), pressKey("enter")).add("  ").button(st.button.Render(cancelButton), pressKey("esc")),
+	}
+	if len(lines) <= m.pageHeight() {
+		return lines
+	}
+	var tight []line
+	for _, ln := range lines {
+		if ln.w > 0 {
+			tight = append(tight, ln)
+		}
+	}
+	return tight
 }

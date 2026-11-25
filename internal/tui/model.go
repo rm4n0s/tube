@@ -71,10 +71,19 @@ type Model struct {
 	// message is the line above the keys; isError draws it as an error.
 	message string
 	isError bool
+	// lastClick is the last click of the left button: a second one near it, soon after it, is
+	// a double click.
+	lastClick lastClick
+	// dark says that the terminal's background is dark, and colors that the terminal draws
+	// colors: the styles are made for both.
+	dark, colors bool
 
-	// home and readDir are for the completion of paths.
-	home    string
-	readDir func(dir string) ([]os.DirEntry, error)
+	// home, cwd and readDir are for the paths of the add page: the home folder ("~"), the
+	// working folder, where the list of folders starts, and how a folder is read. lastDir is
+	// the folder of the last add: the next one starts there.
+	home, cwd string
+	lastDir   string
+	readDir   func(dir string) ([]os.DirEntry, error)
 
 	// getenv and lookPath find the editor; execEditor runs it (the tests replace it). editor is
 	// the editor of the edit that runs.
@@ -93,8 +102,14 @@ func NewModel(ctx context.Context, a app.Application, clk clock.Clock) Model {
 	}
 	// Without a home folder, "~" is not completed; nothing else needs it.
 	home, _ := os.UserHomeDir()
+	// Without a working folder, the list of folders starts at the root.
+	cwd, err := os.Getwd()
+	if err != nil {
+		cwd = "/"
+	}
 	return Model{
-		ctx: ctx, app: a, clock: clk, styles: newStyles(), page: pageProfiles, home: home, readDir: defaultReadDir,
+		ctx: ctx, app: a, clock: clk, styles: newStyles(true, true), dark: true, colors: true, page: pageProfiles,
+		home: home, cwd: cwd, readDir: defaultReadDir,
 		getenv: os.Getenv, lookPath: exec.LookPath, execEditor: execEditor,
 	}
 }
@@ -102,8 +117,9 @@ func NewModel(ctx context.Context, a app.Application, clk clock.Clock) Model {
 // Result is what the user chose.
 func (m Model) Result() Result { return m.result }
 
-// Init reads the snapshot.
-func (m Model) Init() tea.Cmd { return m.readSnapshot() }
+// Init reads the snapshot, and asks the terminal for its background color: the colors are made
+// for a dark or for a light one.
+func (m Model) Init() tea.Cmd { return tea.Batch(m.readSnapshot(), tea.RequestBackgroundColor) }
 
 // readSnapshot is the command that reads the snapshot.
 func (m Model) readSnapshot() tea.Cmd {
@@ -141,7 +157,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.scroll()
 		return m, cmd
 	case completedMsg:
-		m = m.completed(msg)
+		m, cmd := m.completed(msg)
+		m.scroll()
+		return m, cmd
+	case folderMsg:
+		m = m.folderRead(msg)
+	case tea.BackgroundColorMsg:
+		m.dark = msg.IsDark()
+		m.styles = newStyles(m.dark, m.colors)
+	case tea.ColorProfileMsg:
+		// The profiles without colors: a terminal that has none, or NO_COLOR.
+		name := msg.String()
+		m.colors = name != "Ascii" && name != "NoTTY"
+		m.styles = newStyles(m.dark, m.colors)
+	case tea.MouseClickMsg:
+		return m.clicked(msg)
+	case tea.MouseWheelMsg:
+		m, cmd := m.wheeled(msg)
+		m.scroll()
+		return m, cmd
 	case deletedMsg:
 		if msg.err != nil {
 			m.setError(msg.err)
@@ -172,7 +206,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch {
 		case m.ask != nil:
 		case m.page == pageAdd:
-			m = m.addPaste(msg.Content)
+			m, cmd := m.addPaste(msg.Content)
+			m.scroll()
+			return m, cmd
 		case m.page == pageProfile:
 			m = m.profilePaste(msg.Content)
 		case m.page == pageLogin:
@@ -268,15 +304,20 @@ func (m *Model) setNotice(text string) {
 
 // scroll moves the list's window so that the selected row is visible.
 func (m *Model) scroll() {
-	if m.page == pageRun {
+	switch {
+	case m.page == pageRun:
 		m.list.window(m.netListHeight())
-		return
+	case m.page == pageAdd && m.add != nil:
+		p := *m.add
+		p.br.list.window(max(m.folderHeight()-2, 1))
+		m.add = &p
+	default:
+		m.list.window(m.listHeight())
 	}
-	m.list.window(m.listHeight())
 }
 
 // key handles a key press. Any key clears the message line first.
-func (m Model) key(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+func (m Model) key(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	m.message, m.isError = "", false
 	name := msg.String()
 	if name == "ctrl+c" && m.run != nil && m.page != pageRun {

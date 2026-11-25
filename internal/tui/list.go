@@ -48,6 +48,13 @@ func (l *list) key(name string) bool {
 	return true
 }
 
+// scroll moves the window by delta rows, as the wheel does, and keeps the selection inside it.
+func (l *list) scroll(delta int) {
+	height := max(l.page, 1)
+	l.top = max(min(l.top+delta, l.n-height), 0)
+	l.sel = max(min(max(l.sel, l.top), min(l.top+height, l.n)-1), 0)
+}
+
 // window returns the rows to draw in height lines, first included and last not, moved so that
 // the selected row is visible.
 func (l *list) window(height int) (first, last int) {

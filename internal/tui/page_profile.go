@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/rm4n0s/tube/internal/app"
 )
 
@@ -177,24 +178,26 @@ func (m Model) profilePaste(text string) Model {
 
 // profileBody is a profile's page: a line for each fact, then the open field. When they do not
 // fit, the facts are cut so that the field stays visible.
-func (m Model) profileBody() []string {
+func (m Model) profileBody() []line {
 	p, ok := m.profile()
 	if !ok {
 		return nil
 	}
+	st := m.styles
 	width := max(m.width-2-labelWidth, 1)
-	lines := []string{""}
-	add := func(label string, values ...string) {
+	lines := []line{{}}
+	add := func(label string, style lipgloss.Style, values ...string) {
 		for i, v := range values {
 			if i > 0 {
 				label = ""
 			}
-			lines = append(lines, "  "+m.styles.dim.Render(fit(label, labelWidth))+fit(v, width))
+			lines = append(lines, text("  "+st.label.Render(fit(label, labelWidth))+style.Render(fit(v, width))))
 		}
 	}
-	add("Name", p.Name)
+	plain := lipgloss.NewStyle()
+	add("Name", st.title, p.Name)
 	if p.Broken != "" {
-		add("Cannot be used", wrap(p.Broken, width)...)
+		add("Cannot be used", st.err, wrap(p.Broken, width)...)
 		return m.withField(lines)
 	}
 	servers := p.Remotes
@@ -204,48 +207,59 @@ func (m Model) profileBody() []string {
 	if len(servers) == 0 {
 		servers = []string{"none"}
 	}
-	add("Servers", servers...)
-	login, username := "a certificate only", "not remembered"
+	add("Servers", st.info, servers...)
+	login, loginStyle, username := "a certificate only", plain, "not remembered"
 	if p.NeedsPassword {
-		login = "a user name and a password"
+		login, loginStyle = "a user name and a password", st.warn
 	}
 	if p.Username != "" {
 		username = p.Username
 	}
-	add("Login", login)
-	add("User name", username)
+	add("Login", loginStyle, login)
+	add("User name", plain, username)
 	dns := "from the VPN"
 	if len(p.DNS) > 0 {
 		dns = strings.Join(p.DNS, ", ")
 	}
-	add("DNS servers", dns)
-	add("Last used", ago(m.now, p.LastUsed))
+	add("DNS servers", plain, dns)
+	add("Last used", st.dim, ago(m.now, p.LastUsed))
 	files := "inside the profile"
 	if len(p.Files) > 0 {
 		files = strings.Join(p.Files, ", ")
 	}
-	add("Files", files)
+	add("Files", plain, files)
 	if len(p.Ignored) > 0 {
 		ignored := wrap(strings.Join(p.Ignored, ", "), width)
 		if len(ignored) > maxIgnoredLine {
 			ignored = ignored[:maxIgnoredLine]
 			ignored[maxIgnoredLine-1] = fit(ignored[maxIgnoredLine-1]+" …", width)
 		}
-		add("Ignored options", ignored...)
+		add("Ignored options", st.dim, ignored...)
 	}
 	return m.withField(lines)
 }
 
 // withField adds the open field under the lines, cutting the lines when the page is too short.
-func (m Model) withField(lines []string) []string {
+// A click in the field moves its cursor.
+func (m Model) withField(lines []line) []line {
 	pp := m.prof
 	if pp == nil || pp.open == noField {
 		return lines
 	}
-	f := []string{
-		"",
-		"  " + m.styles.title.Render(fieldLabels[pp.open]),
-		"  " + pp.field.view(max(m.width-4, 10), !pp.busy, m.styles),
+	width := max(m.width-4, 10)
+	click := func(m Model, c click) (Model, tea.Cmd) {
+		if m.prof == nil || m.prof.busy {
+			return m, nil
+		}
+		pp := *m.prof
+		m.prof = &pp
+		pp.field.click(c.x, width)
+		return m, nil
+	}
+	f := []line{
+		{},
+		text("  " + m.styles.labelOn.Render(fieldLabels[pp.open])),
+		text("  ").append(text(pp.field.view(width, !pp.busy, m.styles)).whole(click)),
 	}
 	if keep := m.pageHeight() - len(f); len(lines) > keep {
 		lines = lines[:max(keep, 0)]

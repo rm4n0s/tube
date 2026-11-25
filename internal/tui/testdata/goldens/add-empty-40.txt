@@ -1,0 +1,10 @@
+ Tube   select a profile to run firefox 
+────────────────────────────────────────
+  File                                  
+  Name  the file's name                 
+                                        
+  [ Add ]  [ Cancel ]                   
+                                        
+────────────────────────────────────────
+                                        
+tab complete  ↑↓ field  enter add  esc …

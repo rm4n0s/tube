@@ -1,4 +1,4 @@
-Tube   firefox through Work   connected 00:12:31   ↓ 1.2 MB/s  ↑ 80.0 kB/s                          
+ Tube   firefox through Work   connected 00:12:31   ↓ 1.2 MB/s  ↑ 80.0 kB/s                         
 [Status]  Output  Network                                                                           
 ────────────────────────────────────────────────────────────────────────────────────────────────────
 Application   firefox, running                                                                      
@@ -7,9 +7,9 @@ Address       10.8.0.2/24
 DNS servers   10.0.0.53                                                                             
 MTU           1500                                                                                  
                                                                                                     
-Received      1.5 GB   1,100,000 packets   1.2 MB/s                                                 
-Sent          80.0 MB    400,000 packets   80.0 kB/s                                                
-Dropped       3 packets                                                                             
+↓ Received    1.5 GB   1,100,000 packets   1.2 MB/s                                                 
+↑ Sent        80.0 MB    400,000 packets   80.0 kB/s                                                
+  Dropped     3 packets                                                                             
                                                                                                     
 12:00:16  event 16                                                                                  
 12:00:17  event 17                                                                                  

@@ -1,4 +1,4 @@
-Tube   firefox through Work   connecting again…             
+ Tube   firefox through Work   connecting again…            
 [Status]  Output  Network                                   
 ────────────────────────────────────────────────────────────
 Application   firefox, running                              
@@ -7,9 +7,9 @@ Address       -
 DNS servers   -                                             
 MTU           -                                             
                                                             
-Received      1.5 GB   1,100,000 packets   0 B/s            
-Sent          80.0 MB    400,000 packets   0 B/s            
-Dropped       3 packets                                     
+↓ Received    1.5 GB   1,100,000 packets   0 B/s            
+↑ Sent        80.0 MB    400,000 packets   0 B/s            
+  Dropped     3 packets                                     
                                                             
 ────────────────────────────────────────────────────────────
                                                             

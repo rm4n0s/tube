@@ -11,26 +11,34 @@ var helpAbout = []string{
 	"A program that hands its work to one that already runs (a second firefox, a terminal's server) is not in the VPN.",
 }
 
-// helpBody is every binding of the table, page by page, then what Tube does.
-func (m Model) helpBody() []string {
-	var lines []string
-	for _, pb := range bindings(len(m.snap.Target) > 0) {
-		// One page on one line, wrapped: "Profiles  enter run   a add ...". The keys are
+// helpMouse is the line of the help page about the mouse (docs/SPEC.md §13.12).
+const helpMouse = "click: select, or press the key or the button under it · double click: open, run or use · " +
+	"wheel: scroll · shift and drag: select text, as your terminal does"
+
+// helpBody is every binding of the table, page by page, then the mouse, then what Tube does.
+func (m Model) helpBody() []line {
+	var lines []line
+	entry := func(title, rest string) {
+		// One page on one line, wrapped: "Profiles — enter: run · a: add ...". The keys are
 		// set apart by "·", so that the words can wrap anywhere.
+		for i, l := range wrap(title+" — "+rest, m.width-2) {
+			if i == 0 {
+				l = m.styles.title.Render(title) + strings.TrimPrefix(l, title)
+			}
+			lines = append(lines, text("  "+l))
+		}
+	}
+	for _, pb := range bindings(len(m.snap.Target) > 0) {
 		parts := make([]string, 0, len(pb.bindings))
 		for _, b := range pb.bindings {
 			parts = append(parts, b.keys+": "+b.what)
 		}
-		for i, l := range wrap(pb.title+" — "+strings.Join(parts, " · "), m.width-2) {
-			if i == 0 {
-				l = m.styles.title.Render(pb.title) + strings.TrimPrefix(l, pb.title)
-			}
-			lines = append(lines, "  "+l)
-		}
+		entry(pb.title, strings.Join(parts, " · "))
 	}
-	lines = append(lines, "")
+	entry("Mouse", helpMouse)
+	lines = append(lines, line{})
 	for _, about := range helpAbout {
-		lines = append(lines, wrap(about, m.width)...)
+		lines = append(lines, texts(wrap(about, m.width)...)...)
 	}
 	return lines
 }

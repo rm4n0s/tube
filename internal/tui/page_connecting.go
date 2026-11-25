@@ -106,15 +106,21 @@ func (m Model) connected(msg connectedMsg) (Model, tea.Cmd) {
 }
 
 // connectingBody is the connecting page.
-func (m Model) connectingBody() []string {
+func (m Model) connectingBody() []line {
 	c := m.conn
+	st := m.styles
 	seconds := max(int(m.now.Sub(c.started)/time.Second), 0)
-	text := "Connecting to " + c.name + "…  " + strconv.Itoa(seconds) + " s"
+	name := st.accent.Render(c.name)
 	switch {
 	case c.starting:
-		text = "Connected to " + c.name + ". Starting the application…"
+		return []line{{}, text("  " + st.ok.Render("Connected to ") + name + st.ok.Render(". Starting the application…"))}
 	case c.cancelling:
-		text = cancelling
+		return []line{{}, text("  " + st.warn.Render(cancelling))}
 	}
-	return []string{"", "  " + text, "", "  " + m.styles.dim.Render(escCancels)}
+	return []line{
+		{},
+		text("  " + st.warn.Render("Connecting to ") + name + st.warn.Render("…") + "  " + st.dim.Render(strconv.Itoa(seconds)+" s")),
+		{},
+		text("  ").button(st.button.Render(cancelButton), pressKey("esc")).add("  " + st.dim.Render(escCancels)),
+	}
 }

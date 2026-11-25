@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"charm.land/lipgloss/v2"
 	"github.com/rm4n0s/tube/internal/app"
 )
 
@@ -17,26 +18,28 @@ const eventTime = "15:04:05"
 
 // statusBody is the Status tab (docs/SPEC.md §13.8): the application, the VPN, the network,
 // the traffic, and the events that fit, the newest last.
-func (m Model) statusBody() []string {
+func (m Model) statusBody() []line {
 	st := m.run.state
+	sty := m.styles
 	width := max(m.width-statusLabelWidth, 1)
-	var lines []string
-	add := func(label, value string) {
-		lines = append(lines, m.styles.dim.Render(fit(label, statusLabelWidth))+fit(value, width))
+	var lines []line
+	add := func(label string, style lipgloss.Style, value string) {
+		lines = append(lines, text(sty.label.Render(fit(label, statusLabelWidth))+style.Render(fit(value, width))))
 	}
-	application := st.AppName + ", running"
+	plain := lipgloss.NewStyle()
+	application, appStyle := st.AppName+", running", sty.ok
 	if m.run.ended() {
-		application = st.AppName + ", ended with status " + strconv.Itoa(st.Exit)
+		application, appStyle = st.AppName+", ended with status "+strconv.Itoa(st.Exit), sty.warn
 	}
-	add("Application", application)
-	vpn := vpnText(st)
+	add("Application", appStyle, application)
+	vpn, vpnStyle := vpnText(st), m.stateStyle(st.State)
 	if m.run.ended() {
-		vpn = "closed when the application ended"
+		vpn, vpnStyle = "closed when the application ended", sty.dim
 		if st.ProfileName != "" {
 			vpn = st.ProfileName + ", " + vpn
 		}
 	}
-	add("VPN", vpn)
+	add("VPN", vpnStyle, vpn)
 	address, dns, mtu := "-", "-", "-"
 	if st.State == "connected" && !m.run.ended() {
 		if len(st.Addrs) > 0 {
@@ -49,30 +52,33 @@ func (m Model) statusBody() []string {
 			mtu = strconv.Itoa(st.MTU)
 		}
 	}
-	add("Address", address)
-	add("DNS servers", dns)
-	add("MTU", mtu)
-	lines = append(lines, "")
+	add("Address", sty.info, address)
+	add("DNS servers", sty.info, dns)
+	add("MTU", plain, mtu)
+	lines = append(lines, line{})
 	down, up := countText(st.Down.Packets), countText(st.Up.Packets)
 	countWidth := max(len(down), len(up))
 	traffic := func(t app.Traffic, count string) string {
 		return fit(bytesText(t.Bytes), 9) + strings.Repeat(" ", countWidth-len(count)) + count + " packets   " + rateText(t.Rate)
 	}
-	add("Received", traffic(st.Down, down))
-	add("Sent", traffic(st.Up, up))
-	dropped := countText(st.Dropped) + " packets"
+	add("↓ Received", sty.down, traffic(st.Down, down))
+	add("↑ Sent", sty.up, traffic(st.Up, up))
+	dropped, droppedStyle := countText(st.Dropped)+" packets", plain
 	if st.Dropped == 1 {
 		dropped = "1 packet"
 	}
-	add("Dropped", dropped)
+	if st.Dropped > 0 {
+		droppedStyle = sty.warn
+	}
+	add("  Dropped", droppedStyle, dropped)
 	room := m.runPageHeight() - len(lines) - 1
 	if room <= 0 || len(st.Events) == 0 {
 		return lines
 	}
-	lines = append(lines, "")
+	lines = append(lines, line{})
 	events := st.Events[max(len(st.Events)-room, 0):]
 	for _, e := range events {
-		lines = append(lines, fit(e.Time.Format(eventTime)+"  "+clean(e.Text), m.width))
+		lines = append(lines, text(sty.dim.Render(e.Time.Format(eventTime))+"  "+fit(clean(e.Text), max(m.width-len(eventTime)-2, 1))))
 	}
 	return lines
 }

@@ -4,7 +4,6 @@ package tui
 
 import (
 	"strconv"
-	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -148,16 +147,10 @@ func (m Model) runKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	m.run = &r
 	name := msg.String()
 	switch name {
-	case "tab", "shift+tab":
-		if name == "tab" {
-			r.tab = (r.tab + 1) % runTabCount
-		} else {
-			r.tab = (r.tab + runTabCount - 1) % runTabCount
-		}
-		if r.tab == tabNetwork {
-			m.selectInUse()
-		}
-		return m, m.readRun()
+	case "tab":
+		return m.showTab((r.tab + 1) % runTabCount)
+	case "shift+tab":
+		return m.showTab((r.tab + runTabCount - 1) % runTabCount)
 	}
 	switch r.tab {
 	case tabOutput:
@@ -172,6 +165,18 @@ func (m Model) runKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		m.page, m.helpBack = pageHelp, pageRun
 	}
 	return m, nil
+}
+
+// showTab shows a tab of the run screen; the Network tab opens with the profile in use
+// selected.
+func (m Model) showTab(tab runTab) (Model, tea.Cmd) {
+	r := *m.run
+	m.run = &r
+	r.tab = tab
+	if tab == tabNetwork {
+		m.selectInUse()
+	}
+	return m, m.readRun()
 }
 
 // quitKey is q or ctrl+c: after the end, quit; while it runs, ask; while it is being stopped, a
@@ -205,10 +210,10 @@ func (m Model) quitKey(name string) (Model, tea.Cmd) {
 
 // runView draws the run screen: the header, the tabs, a rule, the tab's page, a rule, the
 // message and the keys.
-func (m Model) runView() string {
-	lines := make([]string, 0, m.height)
-	lines = append(lines, fit(m.runHeader(), m.width), fit(m.tabsLine(), m.width), m.rule())
-	var body []string
+func (m Model) runView() []line {
+	lines := make([]line, 0, m.height)
+	lines = append(lines, m.runHeader(), m.tabsLine(), m.rule())
+	var body []line
 	switch m.run.tab {
 	case tabStatus:
 		body = m.statusBody()
@@ -217,43 +222,49 @@ func (m Model) runView() string {
 	case tabNetwork:
 		body = m.networkBody()
 	}
-	if m.ask != nil {
-		body = overlay(body, m.ask.q.box(m.width, m.styles), m.width, m.runPageHeight())
-	}
-	for i := range m.runPageHeight() {
-		line := ""
-		if i < len(body) {
-			line = body[i]
-		}
-		lines = append(lines, fit(line, m.width))
-	}
-	return strings.Join(append(lines, m.rule(), fit(m.messageLine(), m.width), fit(m.runFooter(), m.width)), "\n")
+	lines = append(lines, m.paged(body, m.runPageHeight())...)
+	return append(lines, m.rule(), m.messageLine(), m.runFooter())
 }
 
 // runHeader is line 0: the application, the profile, the state and the rates. When it does not
 // fit, the rates go first, then the time of the state.
-func (m Model) runHeader() string {
+func (m Model) runHeader() line {
 	st := m.run.state
-	who := st.AppName
+	sty := m.styles
+	who := sty.accent.Render(st.AppName)
 	if m.run.ended() {
-		who += " ended (status " + strconv.Itoa(st.Exit) + ")"
+		who += sty.warn.Render(" ended (status " + strconv.Itoa(st.Exit) + ")")
 	}
 	if st.ProfileName != "" {
-		who += " through " + st.ProfileName
+		who += " through " + sty.title.Render(st.ProfileName)
 	}
-	base := m.styles.title.Render("Tube") + "   " + who
+	base := m.badge() + "  " + who
 	if m.run.ended() {
 		// The session closed the VPN with the application: it has no state, and no rates.
-		return base
+		return text(base)
 	}
 	word, timed := stateWords(st)
-	rates := "↓ " + rateText(st.Down.Rate) + "  ↑ " + rateText(st.Up.Rate)
-	for _, line := range []string{base + "   " + timed + "   " + rates, base + "   " + timed, base + "   " + word} {
-		if lipgloss.Width(line) <= m.width {
-			return line
+	color := m.stateStyle(st.State)
+	rates := sty.down.Render("↓ "+rateText(st.Down.Rate)) + "  " + sty.up.Render("↑ "+rateText(st.Up.Rate))
+	short := base + "   " + color.Render(word)
+	for _, l := range []string{base + "   " + color.Render(timed) + "   " + rates, base + "   " + color.Render(timed), short} {
+		if lipgloss.Width(l) <= m.width {
+			return text(l)
 		}
 	}
-	return base + "   " + word
+	return text(short)
+}
+
+// stateStyle is the style of a state of the VPN: well when it is connected, attention while it
+// connects again, an error when the application has no network.
+func (m Model) stateStyle(state string) lipgloss.Style {
+	switch state {
+	case "connected":
+		return m.styles.ok
+	case "reconnecting":
+		return m.styles.warn
+	}
+	return m.styles.err
 }
 
 // stateWords are the words of the state, without and with its time.
@@ -271,21 +282,26 @@ func stateWords(st app.RunState) (word, timed string) {
 	return "", ""
 }
 
-// tabsLine is line 1: the tabs, the current one in brackets and bold.
-func (m Model) tabsLine() string {
-	parts := make([]string, 0, runTabCount)
+// tabsLine is line 1: the tabs, the current one in brackets and selected. A click on a tab
+// shows it.
+func (m Model) tabsLine() line {
+	var l line
 	for i, name := range tabNames {
-		if runTab(i) == m.run.tab {
-			parts = append(parts, m.styles.title.Render("["+name+"]"))
-		} else {
-			parts = append(parts, name)
+		if i > 0 {
+			l = l.add("  ")
 		}
+		tab := runTab(i)
+		label := m.styles.tab.Render(name)
+		if tab == m.run.tab {
+			label = m.styles.selected.Render("[" + name + "]")
+		}
+		l = l.button(label, func(m Model, _ click) (Model, tea.Cmd) { return m.showTab(tab) })
 	}
-	return strings.Join(parts, "  ")
+	return l
 }
 
 // runFooter is the keys of the tab.
-func (m Model) runFooter() string {
+func (m Model) runFooter() line {
 	if m.ask != nil {
 		return m.footer()
 	}
@@ -294,16 +310,16 @@ func (m Model) runFooter() string {
 	case tabOutput:
 		return m.outputFooter()
 	case tabNetwork:
-		if f := m.networkFooter(); f != "" {
-			return f
+		if m.run.switching != nil {
+			return m.hint(binding{"esc", "cancel"})
 		}
 		p = pageRunNetwork
 	}
-	var parts []string
+	var hints []line
 	for _, b := range footerBindings(p, len(m.snap.Target) > 0) {
-		parts = append(parts, m.styles.key.Render(b.keys)+" "+b.what)
+		hints = append(hints, m.hint(b))
 	}
-	return strings.Join(parts, "   ")
+	return joinHints(hints, m.width)
 }
 
 // runNotice is the message line's text when nothing else is on it: that the application is
