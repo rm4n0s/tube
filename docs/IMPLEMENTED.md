@@ -157,3 +157,15 @@ The log of the finished steps of `docs/IMPLEMENTATION.md`, in order (its rule 11
   - The probes that talk to their test through files get the names of the files from `sandboxtest.ReadyFileVar`, `GoFileVar` and `OutFileVar`; `linger` writes `ready <pid>`, so that the test finds the application and, through `/proc/<pid>/stat`, the keeper, and waits for both to be gone.
   - A `Session.Signal` that does not reach the application is logged at the debug level.
   - `TestReason` checks the words of the line about the end of the VPN.
+
+## Step 3.1: Connecting and explaining
+- Date: 2026-11-25
+- What was done: `app.App`: `Open` (the folders, the log with `tube started`, the store), `Close`, `Target`, `FindProfile` (the exact name, else the only one equal without case; not found, ambiguous, broken), `Connect` (the dial, then `MarkUsed` and, with `remember`, the user name; a failure is logged as `connect failed`), `Run` (`LookPath`, `session.Start`, `Wait`, with `run started` and `run ended` in the log), `Signal`. `app.Explain` and `app.ExitCode`.
+- Checks: `scripts/checks.sh` passed, with the tests against the real server: a ping through the real server from `App.Run`, a remembered user name, and the sentence of a wrong password.
+- Proofs: none
+- Manual checks: none
+- Differences from the plan or the spec:
+  - The rows of `TestExplain` for the parser's problems and for the kinds of a failure of a connection are errors with the library's Tag strings (`"UnsupportedOption"`, `"AuthFailed"`, ...) written in the test: `internal/app` may not import gopenvpn-conn, in tests too (SPEC §4.2 rule 3). One row is a real profile that the parser refuses (`comp-lzo`), and the name that is taken is a real `Rename`.
+  - `ProblemSyntax` without a line says `The profile cannot be read: a mistake.`; `sandbox.TagAppNotFound` (which has no name) says `The program was not found.`
+  - The profiles `HOME` and `home` of `TestFindProfile` are made by writing the name into `meta.json` by hand: the store refuses two names that differ only by case.
+  - `Run` returns an exit status with its error too (125, or 127/126 for an application that is not found or cannot be executed), so that the caller does not need `ExitCode` for these; `TestConnectNeedsCredentials` also checks that a password given to a server that does not answer stays out of the log, and that a failed connect changes nothing of the profile.
