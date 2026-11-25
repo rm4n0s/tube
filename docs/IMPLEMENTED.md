@@ -145,3 +145,15 @@ The log of the finished steps of `docs/IMPLEMENTATION.md`, in order (its rule 11
   - `Counters` has a named type for each way, `Traffic{Packets, Bytes}`, instead of an anonymous struct, so that tests and callers can write the values.
   - The fake device of the tests is a `vpntest.Tunnel` (it has the queue, the failures and the deadline that a device needs) with a `Write` that can be made to fail.
   - `Err` keeps the error of a pump that ended by itself after `Stop` is called; it is nil when `Stop` ended the pump.
+
+## Step 2.7: The session
+- Date: 2026-11-25
+- What was done: `internal/core/session`: `Start` makes the temporary folder and the namespace (with `TUBE=1`, `TUBE_PROFILE`, `MOZ_NO_REMOTE=1` and the extra variables, each replacing one of the same name), configures it, writes the warnings as lines, starts the pump and the application, and undoes everything (and closes the tunnel) when a step fails; a watcher writes a line when the VPN connection ends while the application runs, with a reason made from the kind of the error; `Wait` cleans up and returns the exit status; `Signal`. The probes `ping-twice` and `linger`.
+- Checks: `scripts/checks.sh` passed, with the tests against the real server: a ping through a real OpenVPN server, the session and the namespace works over IPv4 and IPv6.
+- Proofs: none
+- Manual checks: none
+- Differences from the plan or the spec:
+  - The two tests against the real server are one table test, `TestThroughARealServer` (IPv4 and IPv6).
+  - The probes that talk to their test through files get the names of the files from `sandboxtest.ReadyFileVar`, `GoFileVar` and `OutFileVar`; `linger` writes `ready <pid>`, so that the test finds the application and, through `/proc/<pid>/stat`, the keeper, and waits for both to be gone.
+  - A `Session.Signal` that does not reach the application is logged at the debug level.
+  - `TestReason` checks the words of the line about the end of the VPN.

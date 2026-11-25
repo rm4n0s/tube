@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"os/signal"
 	"slices"
 	"strings"
@@ -33,11 +34,13 @@ func HandleProbe() {
 		return
 	}
 	probes := map[string]func(args []string) error{
-		"report":   report,
-		"lookup":   lookup,
-		"files":    files,
-		"stubborn": stubborn,
-		"sigint":   sigint,
+		"report":     report,
+		"lookup":     lookup,
+		"files":      files,
+		"stubborn":   stubborn,
+		"sigint":     sigint,
+		"ping-twice": pingTwice,
+		"linger":     linger,
 	}
 	probe, ok := probes[name]
 	if !ok {
@@ -211,5 +214,81 @@ func stubborn([]string) error {
 // sigint prints whether SIGINT is ignored in the application: "true" or "false".
 func sigint([]string) error {
 	fmt.Println(signal.Ignored(syscall.SIGINT))
+	return nil
+}
+
+// The variables that name the files through which a probe and its test talk.
+const (
+	// ReadyFileVar names the file that the probe writes when it has done its first part.
+	ReadyFileVar = "TUBE_PROBE_READY_FILE"
+	// GoFileVar names the file that the test makes when the probe may go on.
+	GoFileVar = "TUBE_PROBE_GO_FILE"
+	// OutFileVar names the file into which the probe writes its result.
+	OutFileVar = "TUBE_PROBE_OUT_FILE"
+)
+
+// pingOnce says whether one ping to addr is answered within a second.
+func pingOnce(addr string) bool {
+	return exec.Command("ping", "-c", "1", "-W", "1", addr).Run() == nil
+}
+
+// result is "ok" or "failed".
+func result(ok bool) string {
+	if ok {
+		return "ok"
+	}
+	return "failed"
+}
+
+// pingTwice pings the address of its argument once, writes the file of ReadyFileVar, waits
+// (20 seconds at most) for the file of GoFileVar, pings again, and prints
+// "first=<ok|failed> second=<ok|failed>".
+func pingTwice(args []string) error {
+	if len(args) != 1 {
+		fmt.Fprintf(os.Stderr, "sandboxtest: ping-twice takes one address, not %q\n", args)
+		os.Exit(2)
+	}
+	first := pingOnce(args[0])
+	if err := os.WriteFile(os.Getenv(ReadyFileVar), []byte("ready"), 0o600); err != nil {
+		return err
+	}
+	for deadline := time.Now().Add(20 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		if _, err := os.Stat(os.Getenv(GoFileVar)); err == nil {
+			break
+		}
+	}
+	second := pingOnce(args[0])
+	fmt.Printf("first=%s second=%s\n", result(first), result(second))
+	return nil
+}
+
+// linger catches SIGTERM and does nothing with it, writes "ready <pid>" into the file of
+// ReadyFileVar, then looks every 50 ms whether tube0 still exists; when it is gone it writes the
+// names of the links that are left into the file of OutFileVar, one on each line, and exits.
+// It gives up after a minute.
+func linger([]string) error {
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGTERM)
+	go func() {
+		for range sigs {
+		}
+	}()
+	if err := os.WriteFile(os.Getenv(ReadyFileVar), []byte(fmt.Sprintf("ready %d", os.Getpid())), 0o600); err != nil {
+		return err
+	}
+	for deadline := time.Now().Add(time.Minute); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+		if _, err := net.InterfaceByName("tube0"); err == nil {
+			continue
+		}
+		ifaces, err := net.Interfaces()
+		if err != nil {
+			return err
+		}
+		var names []string
+		for _, i := range ifaces {
+			names = append(names, i.Name)
+		}
+		return os.WriteFile(os.Getenv(OutFileVar), []byte(strings.Join(names, "\n")+"\n"), 0o600)
+	}
 	return nil
 }
