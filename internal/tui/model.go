@@ -37,6 +37,9 @@ type Result struct {
 	// Started says that the application was started (App.Start worked): cmd/tube then calls
 	// App.Finish for its exit status.
 	Started bool
+	// Ended says that the TUI closed because the application ended by itself (docs/SPEC.md
+	// §13.11), not because the user quit: cmd/tube then writes how it ended on the terminal.
+	Ended bool
 }
 
 // Model is the TUI's model.

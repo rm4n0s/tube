@@ -178,9 +178,19 @@ firefox is still running. Stop it and quit?
 ```
 
 On `y`, Tube sends the application SIGTERM, and SIGKILL five seconds later when it still runs,
-and quits when it has ended. A second `ctrl+c` quits at once. After the application ended by
-itself, the message line says so with its exit status, and `q` quits without a question. Tube
-exits with the application's exit status.
+and quits when it has ended. A second `ctrl+c` quits at once.
+
+**When the application ends, Tube ends too.** Close the window of Firefox, or let `ping -c 3`
+finish, and the terminal UI closes by itself; you do not have to press a key. Your terminal then
+shows the last 20 lines that the application printed, and how it ended:
+
+```
+3 packets transmitted, 3 received, 0% packet loss, time 2003ms
+rtt min/avg/max/mdev = 11.9/12.4/12.9/0.4 ms
+tube: ping ended (status 0)
+```
+
+Tube exits with the application's exit status.
 
 ## Firefox and other programs that are already open
 

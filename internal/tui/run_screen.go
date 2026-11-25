@@ -120,8 +120,9 @@ func (m Model) readRun() tea.Cmd {
 	}
 }
 
-// ran keeps what the run screen draws; the model quits when the application it was stopping
-// has ended.
+// ran keeps what the run screen draws. When the application has ended, the model quits: Tube
+// ends with its application (docs/SPEC.md D31), whether the user stopped it or it ended by
+// itself.
 func (m Model) ran(msg runMsg) (Model, tea.Cmd) {
 	if m.run == nil {
 		return m, nil
@@ -133,7 +134,8 @@ func (m Model) ran(msg runMsg) (Model, tea.Cmd) {
 		r.hold = msg.from
 	}
 	m.now = msg.state.Now
-	if r.stopping && !r.state.AppRunning {
+	if !r.state.AppRunning {
+		m.result.Ended = !r.stopping
 		return m, tea.Quit
 	}
 	return m, nil
@@ -350,7 +352,7 @@ func (m Model) runNotice() string {
 	case r.stopping && !r.ended():
 		return "Stopping " + r.state.AppName + "…"
 	case r.ended():
-		return r.state.AppName + " ended with status " + strconv.Itoa(r.state.Exit) + ". Press q to quit."
+		return r.state.AppName + " ended with status " + strconv.Itoa(r.state.Exit) + "."
 	}
 	return ""
 }

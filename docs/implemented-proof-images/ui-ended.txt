@@ -1,0 +1,16 @@
+64 bytes from 10.8.0.1: icmp_seq=1 ttl=64 time=0.370 ms
+64 bytes from 10.8.0.1: icmp_seq=2 ttl=64 time=0.614 ms
+64 bytes from 10.8.0.1: icmp_seq=3 ttl=64 time=0.636 ms
+
+--- 10.8.0.1 ping statistics ---
+3 packets transmitted, 3 received, 0% packet loss, time 610ms
+rtt min/avg/max/mdev = 0.370/0.540/0.636/0.120 ms
+tube: ping ended (status 0)
+
+
+
+
+
+
+
+Pane is dead (status 0, Wed Nov 25 17:51:10 2026)

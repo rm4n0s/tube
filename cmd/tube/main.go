@@ -138,15 +138,36 @@ func (c cli) run(ctx context.Context, args []string) int {
 	return status
 }
 
-// runTUI runs the TUI; the application runs under it (docs/SPEC.md §11). SIGTERM and SIGHUP
-// end the TUI; Finish then stops the application. The status is the application's, or 130 when
-// the user quit before one was started (0 without an application).
+// tailLines is the number of the last lines of the application's output that are written on the
+// terminal after the TUI closed with the application (docs/SPEC.md §13.11).
+const tailLines = 20
+
+// afterTheEnd writes, after the TUI closed because the application ended, what the user would
+// else not see any more: the last lines of the application's output, on standard output, and how
+// it ended, as a line of Tube. The lines are the plain ones of the Output tab.
+func (c cli) afterTheEnd(a *app.App, status int) {
+	first, end := a.OutputLen()
+	for _, l := range a.OutputRange(max(end-tailLines, first), end) {
+		if _, err := fmt.Fprintln(c.stdout, l); err != nil {
+			break // standard output is closed: the line of Tube still says how it ended
+		}
+	}
+	c.say(a.RunState().AppName + " ended (status " + strconv.Itoa(status) + ")")
+}
+
+// runTUI runs the TUI; the application runs under it (docs/SPEC.md §11). The TUI closes when
+// the application has ended (D31). SIGTERM and SIGHUP end the TUI; Finish then stops the
+// application. The status is the application's, or 130 when the user quit before one was
+// started (0 without an application).
 func (c cli) runTUI(ctx context.Context, a *app.App, f flags) int {
 	tuiCtx, stop := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGHUP)
 	res, err := tui.Run(tuiCtx, a, tui.Options{In: c.stdin, Out: c.stdout})
 	stop()
 	if res.Started {
 		status, ferr := a.Finish()
+		if res.Ended {
+			c.afterTheEnd(a, status)
+		}
 		if ferr != nil {
 			c.say(app.Explain(ferr))
 		}

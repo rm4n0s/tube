@@ -12,7 +12,8 @@ tube --profile work curl https://example.com
 has your OpenVPN profiles (`.ovpn` files): you add them (from a list of your folders), look at,
 change and delete them there, and select one. Tube connects to it and starts Firefox so that all
 of Firefox's network goes through that VPN: TCP, UDP, ICMP and the looking up of names. The
-terminal UI stays open while Firefox runs. It has three tabs:
+terminal UI stays open while Firefox runs, and closes by itself when you close Firefox. It has
+three tabs:
 
 - **Status**: the connection and its traffic.
 - **Output**: what the application prints.

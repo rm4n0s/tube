@@ -26,5 +26,5 @@ MTU           -
                                                                                                     
                                                                                                     
 ────────────────────────────────────────────────────────────────────────────────────────────────────
-firefox ended with status 1. Press q to quit.                                                       
+firefox ended with status 1.                                                                        
 tab shift+tab tabs   q quit   ? keys                                                                

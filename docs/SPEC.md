@@ -9,7 +9,7 @@ Tube runs one application through a VPN, and only that application. This file is
 - **All the network of the application goes through the VPN**: TCP, UDP, ICMP and the looking up of names. Nothing else on the machine changes: other programs keep using the machine's network.
 - **Nothing leaks.** The application has no way to the network but the tunnel. Before the VPN is connected and after it has ended, the application has no network at all.
 - Tube needs no root, no `sudo`, no system service and no installed `openvpn`.
-- When the application has ended and the user quits, Tube disconnects and exits with the application's exit status. Quitting earlier stops the application.
+- When the application has ended, Tube disconnects and exits with the application's exit status (D31). Quitting earlier stops the application.
 - `tube --profile <name> <application>` does the same without a TUI: the application gets the terminal, for scripts and for programs that need the whole terminal.
 
 ## 2. Decisions
@@ -46,6 +46,7 @@ Tube runs one application through a VPN, and only that application. This file is
 | D28 | `tube firefox` (and `thunderbird`) always runs on a profile of its own, which Tube keeps between runs, unless the arguments choose a profile: it is then a process of its own, inside the VPN, whether or not the user's Firefox is open | the user, 2026-11-25 ("if the user has already open firefox, then the new firefox windows uses the default network of the user, not the VPN"; asked: "Tube's own profile") |
 | D29 | The DNS servers of a profile can be given when it is added: the add page has a field for them (§13.3). They can be changed afterwards on the profile's page, as before (§13.4) | the user, 2026-11-25 ("make it possible when adding/editing openvpn profile to also add the DNS") |
 | D30 | `--profile` also takes the path of an `.ovpn` file, written with or without `.ovpn`: the file is added when it is not a profile yet, and the application runs on the user's terminal, without the TUI (§11.1). What the run is missing (the user name, the password, the DNS servers) is asked on the terminal, one after the other, and then whether to save it; `--username`, `--password`, `--dns` and `--save` give the same without a question (§11.2) | the user, 2026-11-25 ("put a flag that will not open a TUI, but add the filename of the ovpn (with or without .ovpn) and start the application and show its output directly ... If username/password and dns missing, then ask them one by one and then ask to save them. And also if the user know that any of these missing, then use a common partner to add them without being interactive, like using a flag"). Chosen while it was built, and told to the user: it is `--profile` and no new option; the names of the options; when the DNS servers are asked for (§11.2); "yes" as the answer of an empty line to the save |
+| D31 | When the application has ended, Tube ends too: the TUI closes by itself, without a key, and Tube exits with the application's status (§13.11). This replaces "stays open until the user quits" of D16 for the time after the application | the user, 2026-11-25 ("when firefox or other application is closed, then close the tube too"). Chosen while it was built, and told to the user: after the TUI closed, the last 20 lines of the application's output and one line of Tube about its end are written on the terminal, so that what a short command printed is not lost with the screen |
 
 ## 3. Platform and requirements
 
@@ -452,9 +453,9 @@ Shows: name, every remote, whether it asks for a password, the remembered user n
 
 ### 13.8 The run screen and the Status tab
 
-While the application runs, and after it has ended until the user quits, the TUI shows the run screen:
+While the application runs, the TUI shows the run screen; when the application has ended, the TUI closes (§13.11, D31):
 
-- The first line: the application, the profile in use, the state (`connected` and for how long, `connecting again…`, `disconnected`, `login refused`), and the rates down and up. After the application ended: that it ended, and its status. When the line does not fit, the name of the profile is cut first (to 8 cells at least), then the rates are left out, then the time of the state: a long name, such as the name of a provider's file, does not hide the rates.
+- The first line: the application, the profile in use, the state (`connected` and for how long, `connecting again…`, `disconnected`, `login refused`), and the rates down and up. The last frame, after the application ended, says that it ended, and its status. When the line does not fit, the name of the profile is cut first (to 8 cells at least), then the rates are left out, then the time of the state: a long name, such as the name of a provider's file, does not hide the rates.
 - The second line: the tabs, `Status`, `Output`, `Network`; the current one is in brackets. `Tab` goes to the next tab and `Shift-Tab` to the one before, on every tab; a click on a tab shows it.
 - The **Status** tab (the first one shown): the application and whether it runs; the profile and the state; the tunnel's addresses, the DNS servers in use and the MTU; for each direction the bytes and packets since the start and the rate of the last second; the dropped packets; and the events, which are Tube's lines (§10) with their time, the newest last.
 - Sizes are written with decimal units (`1.5 MB`, `80.0 kB/s`), times as `hh:mm:ss`.
@@ -464,7 +465,7 @@ While the application runs, and after it has ended until the user quits, the TUI
 - It shows the last lines that the application printed, cut to the width. It follows the end; `PgUp` and `PgDn` scroll, the wheel scrolls three lines, `Home` goes to the oldest line that is kept (5000 are), `End` follows again (scrolling down to the end does too).
 - What the application writes is made into plain lines first (`internal/core/termlog`): a new line ends a line; a carriage return alone starts the line again (a progress bar is one line); a backspace takes a character away; a tab becomes spaces; escape sequences (colors, cursor moves, titles) and every other control or format character are dropped; a line is at most 1000 characters. Nothing that the application prints can move the TUI's cursor or change its colors.
 - **Every other key typed on this tab goes to the application**, as bytes written to its terminal: text as it is, Enter as a carriage return, Backspace, Ctrl-C, Ctrl-D, Ctrl-U, Escape; pasted text too. So Ctrl-C on this tab stops `ping`, and a program that asks a question can be answered. The mouse never goes to the application: a click on the output does nothing. The terminal is a dumb one (D18): a program that wants the whole screen is run with `--profile`.
-- After the application ended, the keys go nowhere, and `q` quits.
+- After the application ended, the keys go nowhere.
 
 ### 13.10 The Network tab
 
@@ -476,7 +477,8 @@ While the application runs, and after it has ended until the user quits, the TUI
 ### 13.11 Quitting
 
 - While the application runs, `q` or `Ctrl-C` on the Status or the Network tab asks: "<application> is still running. Stop it and quit?" On yes, Tube stops the application (§12.4) and quits when it has ended; a second `Ctrl-C` quits at once.
-- After the application ended by itself, a message says so with its status, and `q` quits without a question.
+- **When the application has ended, the TUI closes by itself** (D31), on whatever tab or page it is, also while a question is open, and whether the application ended by itself, was closed by the user (the window of Firefox), or was stopped with `q`. No key is needed. Tube then does what §10 says of the end (the tunnel is closed, the namespace is gone).
+- After the TUI closed because the application ended without being stopped from the TUI, Tube writes on the terminal what the screen showed and no longer does: the last 20 lines of the application's output (the plain lines of §13.9), on standard output, and then one line of its own on standard error, `tube: <application> ended (status <n>)`. After a quit with `q` nothing is written.
 - Tube exits with the application's exit status.
 
 ### 13.12 The mouse

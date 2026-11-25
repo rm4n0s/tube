@@ -150,6 +150,18 @@ func (p *inTerminal) wait(t *testing.T, server *vpntest.Server) int {
 	return p.cmd.ProcessState.ExitCode()
 }
 
+// afterTheTUI is what the terminal got after the TUI gave the screen back, without escape
+// sequences.
+func (p *inTerminal) afterTheTUI(t *testing.T) string {
+	t.Helper()
+	raw := p.screen.buf.String()
+	i := strings.LastIndex(raw, "\x1b[?1049l")
+	if i < 0 {
+		t.Fatalf("the TUI did not give the screen back:\n%s", ansi.Strip(raw))
+	}
+	return ansi.Strip(raw[i:])
+}
+
 func TestTheTUIRunsPing(t *testing.T) {
 	p, server := startInTerminal(t, "ping", "-c", "2", "-W", "2", "10.8.0.1")
 	p.screen.waitFor(t, "test")
@@ -157,10 +169,38 @@ func TestTheTUIRunsPing(t *testing.T) {
 	p.screen.waitFor(t, "[Status]")
 	p.press(t, "\t")
 	p.screen.waitFor(t, "bytes from "+server.TunnelAddr().String())
-	p.screen.waitFor(t, "ended with status 0")
-	p.press(t, "q")
+	// No key: Tube ends when ping has ended, with its status, and leaves the end of its output
+	// and how it ended on the terminal.
 	if status := p.wait(t, server); status != 0 {
 		t.Errorf("the status is %d; the screen:\n%s", status, ansi.Strip(p.screen.buf.String()))
+	}
+	after := p.afterTheTUI(t)
+	for _, want := range []string{"2 packets transmitted, 2 received", "tube: ping ended (status 0)"} {
+		if !strings.Contains(after, want) {
+			t.Errorf("after the TUI, the terminal has no %q:\n%s", want, after)
+		}
+	}
+	if strings.Index(after, "packets transmitted") > strings.Index(after, "tube: ping ended") {
+		t.Errorf("the line of Tube is not the last:\n%s", after)
+	}
+}
+
+func TestTheTUIEndsWithAnApplicationThatFails(t *testing.T) {
+	// 30 lines, of which the last 20 stay on the terminal, then a status that is not 0.
+	p, server := startInTerminal(t, "sh", "-c", "for i in $(seq 1 30); do echo line-$i-of-the-output; done; exit 3")
+	p.screen.waitFor(t, "test")
+	p.press(t, "\r")
+	if status := p.wait(t, server); status != 3 {
+		t.Errorf("the status is %d; the screen:\n%s", status, ansi.Strip(p.screen.buf.String()))
+	}
+	after := p.afterTheTUI(t)
+	for _, want := range []string{"line-11-of-the-output", "line-30-of-the-output", "tube: sh ended (status 3)"} {
+		if !strings.Contains(after, want) {
+			t.Errorf("after the TUI, the terminal has no %q:\n%s", want, after)
+		}
+	}
+	if strings.Contains(after, "line-10-of-the-output") {
+		t.Errorf("more than the last 20 lines are on the terminal:\n%s", after)
 	}
 }
 
@@ -174,6 +214,10 @@ func TestQuitStopsTheApplication(t *testing.T) {
 	p.press(t, "y")
 	if status := p.wait(t, server); status != 143 {
 		t.Errorf("the status is %d; the screen:\n%s", status, ansi.Strip(p.screen.buf.String()))
+	}
+	// The user stopped it: nothing is told about its end.
+	if after := p.afterTheTUI(t); strings.Contains(after, "ended (status") {
+		t.Errorf("after a quit, the terminal has:\n%s", after)
 	}
 	if left := processesWith("sleep\x00300"); len(left) > 0 {
 		t.Errorf("the application is left: %v", left)

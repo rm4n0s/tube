@@ -217,8 +217,22 @@ func (f *Fake) Connect(ctx context.Context, id string, creds *app.Credentials, r
 	return f.call(ctx, "Connect", id, creds.Username, "***", remember)
 }
 
-// Start records the call.
-func (f *Fake) Start(ctx context.Context) error { return f.call(ctx, "Start") }
+// Start records the call; after it the application runs, unless Run says otherwise.
+func (f *Fake) Start(ctx context.Context) error {
+	if err := f.call(ctx, "Start"); err != nil {
+		return err
+	}
+	// A start that worked makes the application run, unless the test gave a run state itself.
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if !f.Run.Started {
+		f.Run.Started, f.Run.AppRunning = true, true
+		if len(f.Snap.Target) > 0 {
+			f.Run.AppName = f.Snap.Target[0]
+		}
+	}
+	return nil
+}
 
 // RunState returns Run.
 func (f *Fake) RunState() app.RunState {

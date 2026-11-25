@@ -99,7 +99,7 @@ With a real provider's profile, a download of a large file (1 GB or more; a Linu
 
 In the second, select the profile and press Enter, and watch the Status tab until the download ends; then remove `/tmp/tube-download.iso`.
 
-Expected: both downloads finish, at about the speed of the VPN without Tube; the Status tab's rate stays above zero while it runs and `Dropped` stays at or near 0; `curl` ends with status 0 (Tube's first line says `curl ended (status 0)`).
+Expected: both downloads finish, at about the speed of the VPN without Tube; the Status tab's rate stays above zero while it runs and `Dropped` stays at or near 0; `curl` ends with status 0: in the second, Tube closes by itself when the download ends, and the terminal then says `tube: curl ended (status 0)`.
 
 ## Step 7.1 (c): suspend and resume while an application runs
 
@@ -177,4 +177,17 @@ go build -o tube ./cmd/tube
 ```
 
 Expected, in the first run: `tube: added the profile "<the file's name>"`, then the questions `User name: `, `Password: ` (nothing is shown while you type), `DNS servers (empty: the ones of the VPN): ` (press Enter) and `Save the user name and the password with the profile? [Y/n] ` (press Enter), and then the VPN's address. The second run asks nothing and prints the VPN's address again. In the third, `a` shows the add page with the three fields File, Name and DNS; the profile's page (`e`) of the profile that the first run added says `Password  remembered`.
+
+## Tube ends with its application (a change outside the steps, 2026-11-25)
+
+The tests do this with `ping` and `sh`; only a real desktop application shows it with a window.
+
+```sh
+go build -o tube ./cmd/tube
+./tube firefox
+```
+
+Select a profile and press Enter. When Firefox is open, close its window (or quit it with its own menu).
+
+Expected: the terminal UI closes by itself, without a key; the terminal shows the last lines that Firefox printed, if any, and then `tube: firefox ended (status 0)`; `pgrep -a firefox` shows no Firefox of Tube left (your own Firefox, if it was open, still runs).
 

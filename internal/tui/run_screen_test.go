@@ -240,25 +240,63 @@ func TestQuitWhileRunning(t *testing.T) {
 	})
 }
 
-func TestQuitAfterTheEnd(t *testing.T) {
-	f := apptest.Running()
-	f.Run.AppRunning, f.Run.Exit = false, 2
-	h := runHarness(t, f, 100, 30)
-	h.has("firefox ended with status 2. Press q to quit.")
-	h.key("q")
-	if !h.quit || h.m().ask != nil {
-		t.Error("q did not quit at once")
+func TestTheEndOfTheApplicationQuits(t *testing.T) {
+	tests := []struct {
+		name string
+		// keys are pressed while the application still runs.
+		keys []string
+	}{
+		{"on the Status tab", nil},
+		{"on the Output tab", []string{"tab"}},
+		{"on the Network tab", []string{"tab", "tab"}},
+		{"on the help page", []string{"?"}},
+		{"while the question about quitting is open", []string{"q"}},
+		{"after the question was answered with no", []string{"q", "n"}},
+		{"while the network is disconnected", []string{"tab", "tab", "x", "y"}},
 	}
-	o := runHarness(t, f, 100, 30)
-	o.key("tab")
-	o.typeText("x")
-	if len(f.Typed()) != 0 {
-		t.Error("a key went to an application that ended")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := apptest.Running()
+			h := runHarness(t, f, 100, 30)
+			h.keys(tt.keys...)
+			if h.quit {
+				t.Fatal("it quit while the application ran")
+			}
+			f.Run.AppRunning, f.Run.Exit = false, 2
+			h.changed()
+			if res := h.m().Result(); !h.quit || !res.Started || !res.Ended {
+				t.Errorf("quit %v, result %+v", h.quit, res)
+			}
+			if slices.Contains(f.Calls(), "Stop()") {
+				t.Errorf("an application that ended was stopped: %q", f.Calls())
+			}
+		})
 	}
-	o.key("q")
-	if !o.quit {
-		t.Error("q on the Output tab did not quit")
-	}
+	t.Run("an application that ended at once", func(t *testing.T) {
+		f := apptest.Running()
+		f.Run.AppRunning, f.Run.Exit = false, 127
+		h := newHarness(t, f, 100, 30)
+		h.selectProfile("id-home")
+		h.key("enter")
+		if res := h.m().Result(); !h.quit || !res.Started || !res.Ended {
+			t.Errorf("quit %v, result %+v", h.quit, res)
+		}
+		// The last frame says how it ended, and asks for no key.
+		h.has("firefox ended with status 127.")
+		if strings.Contains(h.screen(), "Press q") {
+			t.Errorf("the last frame asks for a key:\n%s", h.screen())
+		}
+	})
+	t.Run("the user stopped it: it did not end by itself", func(t *testing.T) {
+		f := apptest.Running()
+		h := runHarness(t, f, 100, 30)
+		h.keys("q", "y")
+		f.Run.AppRunning, f.Run.Exit = false, 143
+		h.changed()
+		if res := h.m().Result(); !h.quit || !res.Started || res.Ended {
+			t.Errorf("quit %v, result %+v", h.quit, res)
+		}
+	})
 }
 
 func TestTheOutputIsSafe(t *testing.T) {
