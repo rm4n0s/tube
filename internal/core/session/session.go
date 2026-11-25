@@ -61,6 +61,9 @@ type Options struct {
 	// Redial connects the same profile again after the tunnel failed (docs/SPEC.md §10, D14);
 	// nil does not connect again.
 	Redial func(ctx context.Context) (vpn.Tunnel, error)
+	// OnChange is called after every change of the state and when the application ends, from
+	// the session's own goroutine, never while it holds a lock, and never after Wait returned.
+	OnChange func()
 }
 
 // Session is a running application in its namespace.
@@ -71,10 +74,17 @@ type Session struct {
 	tmp  string
 	sb   *sandbox.Sandbox
 
-	// The tunnel and the pump in use. Start sets them; then only the controller (control)
-	// touches them.
+	// The connection in use: the tunnel, the pump, the profile's name, its own DNS servers
+	// and its Redial. Start sets them; then only the controller (control) touches them.
 	tunnel vpn.Tunnel
 	pump   *pump.Pump
+	dns    []netip.Addr
+	redial func(ctx context.Context) (vpn.Tunnel, error)
+	// cmds are the commands of the user to the controller.
+	cmds chan command
+	// snap is what Status shows; the controller writes it under snapMu.
+	snapMu sync.Mutex
+	snap   snapshot
 
 	linesMu sync.Mutex
 
@@ -100,6 +110,7 @@ func Start(ctx context.Context, opts Options) (*Session, error) {
 	}
 	s := &Session{
 		opts: opts, log: opts.Logger, name: sanitize.Display(opts.ProfileName, maxNameInEnv), tunnel: opts.Tunnel,
+		dns: opts.DNS, redial: opts.Redial, cmds: make(chan command),
 		appEnded: make(chan struct{}), ctrlDone: make(chan struct{}),
 	}
 	if s.log == nil {
@@ -109,6 +120,11 @@ func Start(ctx context.Context, opts Options) (*Session, error) {
 		s.undo()
 		return nil, err
 	}
+	network := s.tunnel.Network()
+	now := opts.Clock.Now()
+	s.publish(func(st *Status) {
+		*st = Status{State: StateConnected, Since: now, ProfileName: s.name, Network: network, DNS: s.dnsOf(network), AppRunning: true}
+	}, false)
 	go s.waitApp()
 	go s.control()
 	return s, nil
@@ -137,7 +153,7 @@ func (s *Session) start(ctx context.Context) error {
 		return err
 	}
 	network := s.tunnel.Network()
-	if err := s.configure(ctx, network); err != nil {
+	if err := s.configure(ctx, network, s.dns); err != nil {
 		return err
 	}
 	s.pump = pump.Start(s.sb.Device(), s.tunnel, network.MTU)
@@ -156,15 +172,16 @@ func (s *Session) start(ctx context.Context) error {
 // dnsOf are the DNS servers of the namespace with the network: the profile's, else the ones
 // that the server pushed.
 func (s *Session) dnsOf(n vpn.Network) []netip.Addr {
-	if len(s.opts.DNS) > 0 {
-		return s.opts.DNS
+	if len(s.dns) > 0 {
+		return s.dns
 	}
 	return n.DNSServers
 }
 
-// configure configures the namespace for the network, and writes the warnings as lines.
-func (s *Session) configure(ctx context.Context, n vpn.Network) error {
-	warnings, err := s.sb.Configure(ctx, n, s.opts.DNS)
+// configure configures the namespace for the network and the profile's own DNS servers, and
+// writes the warnings as lines.
+func (s *Session) configure(ctx context.Context, n vpn.Network, dns []netip.Addr) error {
+	warnings, err := s.sb.Configure(ctx, n, dns)
 	if err != nil {
 		return err
 	}

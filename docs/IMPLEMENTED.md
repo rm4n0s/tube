@@ -195,3 +195,16 @@ The log of the finished steps of `docs/IMPLEMENTATION.md`, in order (its rule 11
   - `TestReconnect` has two subtests: the pings, and the report of the new address with one default route.
   - The session keeps the traffic of all its pumps (`traffic`), which the end of the run logs; step 4.2 shows it in the status.
   - The end-to-end test of the restart is a subtest of `TestEndToEnd`, `the server restarts`.
+
+## Step 4.2: Disconnecting, switching, and the session's status
+- Date: 2026-11-25
+- What was done: the controller of step 4.1 also takes the user's commands: `Disconnect` (the pump stops, the tunnel is closed, no tries) and `Use` (the tries stop, the old tunnel is closed, the namespace is configured for the new one and a new pump starts; when the namespace cannot be configured, the new tunnel is closed and the session stays disconnected; after the end, `SessionEnded`). `Status` (state, since, profile, network, DNS, the traffic of all the pumps, whether the application runs and its exit status), `Done`, and `Options.OnChange`, called by the controller after each change of the state and at the end of the application. The probe `ping-on-demand`.
+- Checks: `scripts/checks.sh` passed, with the tests against the real server. The tests of `session` also passed with `-race -count=3`.
+- Proofs: none
+- Manual checks: none
+- Differences from the plan or the spec:
+  - The session keeps the connection in use in its own fields (`tunnel`, `pump`, the profile's name, its DNS servers, its `Redial`), which `Start` sets from the options and `Use` replaces; there is no separate first `Connection` value.
+  - A tunnel that fails with no `Redial` leaves the session in `StateDisconnected` (nothing will connect it again until `Use`).
+  - `State` has a `String` method, for the logs and the tests.
+  - `Disconnect` returns when it is done, and a `Disconnect` or `Use` that comes after the application ended does nothing (`Use` closes the given tunnel and returns `SessionEnded`).
+  - The status of a disconnected session keeps the DNS servers that `resolv.conf` still has, and has the zero network.

@@ -34,13 +34,14 @@ func HandleProbe() {
 		return
 	}
 	probes := map[string]func(args []string) error{
-		"report":     report,
-		"lookup":     lookup,
-		"files":      files,
-		"stubborn":   stubborn,
-		"sigint":     sigint,
-		"ping-steps": pingSteps,
-		"linger":     linger,
+		"report":         report,
+		"lookup":         lookup,
+		"files":          files,
+		"stubborn":       stubborn,
+		"sigint":         sigint,
+		"ping-steps":     pingSteps,
+		"ping-on-demand": pingOnDemand,
+		"linger":         linger,
 	}
 	probe, ok := probes[name]
 	if !ok {
@@ -266,6 +267,29 @@ func pingSteps(args []string) error {
 	}
 	fmt.Println(strings.Join(results, " "))
 	return nil
+}
+
+// EndPings is what a file of GoFileVar holds to end the probe ping-on-demand.
+const EndPings = "end"
+
+// pingOnDemand pings when the test asks: for i from 1, it waits (a minute at most) for the file
+// of GoFileVar with ".<i>" added, pings once the address that the file holds, and writes "ok"
+// or "failed" into the file of ReadyFileVar with ".<i>" added. A file that holds EndPings, or a
+// wait that lasts a minute, ends it.
+func pingOnDemand([]string) error {
+	for i := 1; ; i++ {
+		step := fmt.Sprint(i)
+		path := os.Getenv(GoFileVar) + "." + step
+		waitForFile(path)
+		data, err := os.ReadFile(path)
+		if err != nil || strings.TrimSpace(string(data)) == EndPings {
+			return nil
+		}
+		ok := pingOnce(strings.TrimSpace(string(data)))
+		if err := os.WriteFile(os.Getenv(ReadyFileVar)+"."+step, []byte(result(ok)), 0o600); err != nil {
+			return err
+		}
+	}
 }
 
 // waitForFile waits, a minute at most, until the file exists.
