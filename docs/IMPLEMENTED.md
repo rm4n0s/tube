@@ -134,3 +134,14 @@ The log of the finished steps of `docs/IMPLEMENTATION.md`, in order (its rule 11
   - `pty.SetSize` reaches the descriptor through `SyscallConn`, so that the master side stays non-blocking and keeps its deadlines (`File.Fd` would make it blocking); a test asserts it.
   - `PtyNonblockFailed` is one more Tag. The Tags of `pty.Open` cannot be caused and are in `docs/ERROR-TAGS-UNTESTED.md`.
   - Tests that the plan does not name: `TestSigtermToTheKeeperIsPassedOn` (SIGHUP to the keeper reaches the application), `TestSetSizeFails`; `TestAppCannotStart` (step 2.3) checks `ExitCodeOf` too. `TestTheKeeperSurvivesCtrlC` sends SIGQUIT as well as SIGINT.
+
+## Step 2.6: The pump
+- Date: 2026-11-25
+- What was done: `internal/core/pump`: two goroutines move packets between the device and the tunnel; a packet that the tunnel refuses for its size or that the device refuses (`EINVAL`, `EIO`, `ENOBUFS`, `EAGAIN`) is dropped and counted; a failure of the tunnel ends the pump with the tunnel's error, untouched, and a failure of the device with `PumpDeviceReadFailed` or `PumpDeviceWriteFailed`; `Stop` interrupts both reads with a deadline in the past, waits, and clears the deadlines so that the device and the tunnel can be used again; the counters can be read while it runs.
+- Checks: `scripts/checks.sh` passed, with the tests against the real server. The tests of `pump` also passed three times in a row under the race detector.
+- Proofs: none
+- Manual checks: none
+- Differences from the plan or the spec:
+  - `Counters` has a named type for each way, `Traffic{Packets, Bytes}`, instead of an anonymous struct, so that tests and callers can write the values.
+  - The fake device of the tests is a `vpntest.Tunnel` (it has the queue, the failures and the deadline that a device needs) with a `Write` that can be made to fail.
+  - `Err` keeps the error of a pump that ended by itself after `Stop` is called; it is nil when `Stop` ended the pump.
