@@ -1,0 +1,30 @@
+Tube   select a profile to run true
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Name                                    Server                                        Last used
+> Home                                    home.example.net:1194 udp                     never
+  Lab                                     lab.example.org:1194 udp                      never
+  Work                                    vpn.example.com:443 udp             password  never
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+enter run   a add   e open   d delete   ? keys   q quit

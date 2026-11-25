@@ -12,9 +12,12 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/tube/internal/app"
 	"github.com/rm4n0s/tube/internal/core/sandbox"
 	"github.com/rm4n0s/tube/internal/core/storage"
+	"github.com/rm4n0s/tube/internal/tui"
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -26,10 +29,11 @@ const (
 	statusUsage = 2
 	// statusFailed is the exit status of a failure of Tube itself (docs/SPEC.md §10).
 	statusFailed = sandbox.StatusTubeFailed
-	// statusInterrupted is the exit status of a connect that the user cancelled.
+	// statusInterrupted is the exit status of a connect that the user cancelled, and of a TUI
+	// that the user quit before the application ran.
 	statusInterrupted = 130
-	// noTUI is what Tube says without --profile until the TUI exists.
-	noTUI = "the TUI comes with milestone M5; use --profile <name>"
+	// TagNotATerminal is the error of the TUI without a terminal.
+	TagNotATerminal = "TubeNotATerminal"
 )
 
 func main() {
@@ -37,13 +41,15 @@ func main() {
 	if sandbox.IsKeeper() {
 		os.Exit(sandbox.KeeperMain())
 	}
-	os.Exit(run(context.Background(), os.Args[1:], os.LookupEnv, os.Stdout, os.Stderr))
+	os.Exit(run(context.Background(), os.Args[1:], os.LookupEnv, os.Stdin, os.Stdout, os.Stderr))
 }
 
-// cli is one run of the command line: where it writes, and how it finds its folders.
+// cli is one run of the command line: where it reads and writes, and how it finds its folders.
 type cli struct {
-	env            storage.Env
-	stdout, stderr io.Writer
+	env    storage.Env
+	stdin  *os.File
+	stdout *os.File
+	stderr io.Writer
 	// tty is the terminal that asks for a password.
 	tty string
 }
@@ -51,9 +57,23 @@ type cli struct {
 // run is the program with its arguments, environment and streams given, so that tests can call
 // it. It returns the exit status. Standard output belongs to the application (and to --help and
 // --version); every message of Tube is one line on standard error that starts with "tube: ".
-func run(ctx context.Context, args []string, env storage.Env, stdout, stderr io.Writer) int {
-	c := cli{env: env, stdout: stdout, stderr: stderr, tty: ttyPath}
+func run(ctx context.Context, args []string, env storage.Env, stdin, stdout *os.File, stderr io.Writer) int {
+	c := cli{env: env, stdin: stdin, stdout: stdout, stderr: stderr, tty: ttyPath}
 	return c.run(ctx, args)
+}
+
+// isTerminal says whether the file is a terminal.
+func isTerminal(f *os.File) bool {
+	_, err := unix.IoctlGetTermios(int(f.Fd()), unix.TCGETS)
+	return err == nil
+}
+
+// checkTerminal fails unless standard input and output are a terminal, which the TUI needs.
+func checkTerminal(stdin, stdout *os.File) error {
+	if !isTerminal(stdin) || !isTerminal(stdout) {
+		return errors.New(TagNotATerminal, "the TUI needs a terminal; use --profile <name>")
+	}
+	return nil
 }
 
 // say writes one line of Tube on standard error. When even that fails there is nowhere to tell.
@@ -94,6 +114,11 @@ func (c cli) run(ctx context.Context, args []string) int {
 			return c.fail(err)
 		}
 	}
+	if f.profile == "" {
+		if err := checkTerminal(c.stdin, c.stdout); err != nil {
+			return c.fail(err)
+		}
+	}
 	if err := sandbox.Check(ctx); err != nil {
 		return c.fail(err)
 	}
@@ -112,12 +137,29 @@ func (c cli) run(ctx context.Context, args []string) int {
 	return status
 }
 
-// runApp connects the profile of --profile and runs the application.
+// runTUI runs the TUI, and then the application when the user chose to run it.
+func (c cli) runTUI(ctx context.Context, a *app.App, f flags) int {
+	res, err := tui.Run(ctx, a, tui.Options{In: c.stdin, Out: c.stdout})
+	if err != nil {
+		return c.fail(err)
+	}
+	if !res.Run {
+		if len(f.target) == 0 {
+			return statusOK
+		}
+		return statusInterrupted
+	}
+	status, err := c.runWithSignals(ctx, a)
+	if err != nil {
+		c.say(app.Explain(err))
+	}
+	return status
+}
+
+// runApp connects the profile of --profile and runs the application, or runs the TUI.
 func (c cli) runApp(ctx context.Context, a *app.App, f flags) int {
 	if f.profile == "" {
-		// TODO(step 5.2): the TUI.
-		c.say(noTUI)
-		return statusFailed
+		return c.runTUI(ctx, a, f)
 	}
 	id, needsPassword, username, err := a.FindProfile(ctx, f.profile)
 	if err != nil {

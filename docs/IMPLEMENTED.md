@@ -231,3 +231,17 @@ The log of the finished steps of `docs/IMPLEMENTATION.md`, in order (its rule 11
   - SPEC §12.2 already said that the commands block, take a context and run inside a `tea.Cmd` of the TUI: task 5 had nothing to change.
   - The fake does not record `Snapshot` and `Subscribe` in `Calls`; its `AddProfile` returns the id `id-new`, `BeginEdit` the path `/edit/<id>.ovpn`, and `EndEdit` says that the profile changed.
   - `IsRunsScripts` makes the list of options safe with `sanitize.Display` (200 characters).
+
+## Step 5.2: The frame, the list and the profiles page
+- Date: 2026-11-25
+- What was done: `internal/tui` on Bubble Tea v2.1.2 and Lip Gloss v2.1.1: `fit`, `clean`, `ago`, `wrap`; the `list`; one table of key bindings for the footer and the help page; the styles; the `Model` (snapshot, size, page, message line, `Result`); the frame (title, rules, page, message, keys; "The terminal is too small" below 40×10); the profiles page (the latest used selected first, the selection kept on the same profile across snapshots, broken profiles with their reason); the help page; `tui.Run` (subscription, ticker, a cancelled context is not an error). `cmd/tube` opens the TUI without `--profile`, after the lookup of the application, and refuses without a terminal (`TubeNotATerminal`). The fixture `scripts/testdata/three-profiles` and its generator; `scripts/tui-proof.sh`.
+- Checks: `scripts/checks.sh` passed, with the tests against the real server. Every golden file was read.
+- Proofs: `docs/implemented-proof-images/5.2-profiles.txt` (the header `select a profile to run true`, `Home`, `Lab` and `Work` with `password`, the footer) and `5.2-help.txt` (the keys and the three sentences); read, and they show what the step describes. No tmux or tube process was left.
+- Manual checks: none
+- Differences from the plan or the spec:
+  - The list has a line of column names (`Name`, `Server`, `Last used`) above the rows.
+  - The help page's three sentences are wrapped to the width (`wrap`), not cut.
+  - `run` of `cmd/tube` takes `stdin` and `stdout` as `*os.File` and standard error as an `io.Writer`; the check of the terminal comes after the lookup of the application, so that a missing application is still 127 (SPEC §8.5), and is a function of its own, `checkTerminal`, so that its Tag has a route test.
+  - `tui.Options` has an unexported size for a program without a terminal, for the tests of `Run`; `TuiRunFailed` is tested with an input that fails.
+  - The tests of `internal/tui` assert routes with `HasRoute` themselves: the TUI may not import `errtest` (SPEC §4.2 rule 2, which covers test files).
+  - The fixture's generator gives `profilestest` a `testing.TB` of its own that ends the program on `Fatalf`; it was run with `TZ=UTC`, so that the fixture says nothing of this machine's time zone.
