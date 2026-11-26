@@ -60,7 +60,7 @@ Before reporting a task as finished, run `gofmt` (on `cmd` and `internal`), `go 
 - Pass `context.Context` as the first parameter of anything that does I/O (files, processes, network). Name it `ctx`
 - Tests are table-driven
 - No global mutable state and no singletons. Package-level read-only values are fine and are never reassigned
-- Prefer the standard library. Allowed dependencies: `github.com/rm4n0s/gopenvpn-conn` (v1.0.1 or newer; the packages `openvpn` and `ovpn`, not `vpnnet`), `github.com/rm4n0s/errors`, `golang.org/x/sys`, `charm.land/bubbletea/v2` and `charm.land/lipgloss/v2` (only under `internal/tui` and `cmd/tube`), and what these bring in. A step that first imports one of them adds it with `go get <module>@<version>`. Ask before adding any other
+- Prefer the standard library. Allowed dependencies: `github.com/rm4n0s/gopenvpn-conn` (v1.0.4 or newer; the packages `openvpn` and `ovpn`, not `vpnnet`), `github.com/rm4n0s/errors`, `golang.org/x/sys`, `charm.land/bubbletea/v2` and `charm.land/lipgloss/v2` (only under `internal/tui` and `cmd/tube`), and what these bring in. A step that first imports one of them adds it with `go get <module>@<version>`. Ask before adding any other
 - **No cgo**: never write `import "C"`. If a C library is ever needed, ask first
 - Linux only: code that needs Linux (namespaces, TUN, netlink) is in `_linux.go` files or in packages that only build for Linux, and nothing is written for another system until the user asks
 - Only Bubble Tea's `Update` touches the TUI's model. Other goroutines (the VPN connection, the application that runs, timers) hand work over through a `tea.Msg`

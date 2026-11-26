@@ -105,3 +105,43 @@ func TestUDP4(t *testing.T) {
 		}
 	}
 }
+
+func TestSYN4(t *testing.T) {
+	src := netip.MustParseAddrPort("10.9.0.2:40000")
+	dst := netip.MustParseAddrPort("10.9.0.1:8080")
+	packet := SYN4(src, dst, 1380)
+	if Checksum(packet[:20]) != 0 {
+		t.Error("the IPv4 header's checksum is wrong")
+	}
+	pseudo := []byte{10, 9, 0, 2, 10, 9, 0, 1, 0, protoTCP, 0, 24}
+	if Checksum(append(pseudo, packet[20:]...)) != 0 {
+		t.Error("the TCP checksum is wrong")
+	}
+	sp, dp, ack, mss, ok := SYNMSS4(packet)
+	if !ok || sp != 40000 || dp != 8080 || ack || mss != 1380 {
+		t.Errorf("SYNMSS4 = %d, %d, %v, %d, %v", sp, dp, ack, mss, ok)
+	}
+	synack := append([]byte(nil), packet...)
+	synack[20+13] |= 0x10
+	if _, _, ack, _, ok := SYNMSS4(synack); !ok || !ack {
+		t.Errorf("SYNMSS4 of a SYN-ACK = ack %v, ok %v", ack, ok)
+	}
+	noMSS := append([]byte(nil), packet...)
+	noMSS[20+20] = 1 // a no-operation option, then an option that is cut
+	noMSS[20+21] = 1
+	noMSS[20+22] = 1
+	noMSS[20+23] = 1
+	notSYN := append([]byte(nil), packet...)
+	notSYN[20+13] = 0x10
+	for name, p := range map[string][]byte{
+		"an echo request":       EchoRequest4(src.Addr(), dst.Addr(), 1, 1),
+		"a SYN with no MSS":     noMSS,
+		"not a SYN":             notSYN,
+		"cut in the TCP header": packet[:30],
+		"nothing":               nil,
+	} {
+		if _, _, _, _, ok := SYNMSS4(p); ok {
+			t.Errorf("%s is read as a SYN with an MSS", name)
+		}
+	}
+}

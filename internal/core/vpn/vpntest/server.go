@@ -47,6 +47,9 @@ type ServerOptions struct {
 	// Subnet is the IPv4 network of the tunnel, a /24; the zero value is 10.8.0.0/24. The
 	// server is the first address of it.
 	Subnet netip.Prefix
+	// NoMSSFix turns the server's own clamp of the TCP MSS off (--mssfix 0), so that a test sees
+	// only what the client clamped.
+	NoMSSFix bool
 }
 
 // defaultSubnet is the IPv4 network of a tunnel when ServerOptions.Subnet is not set.
@@ -105,6 +108,9 @@ func StartServer(t testing.TB, opts ServerOptions) *Server {
 	}
 	if opts.SearchDomain != "" {
 		extra = append(extra, "--push", "dhcp-option DOMAIN "+opts.SearchDomain)
+	}
+	if opts.NoMSSFix {
+		extra = append(extra, "--mssfix", "0")
 	}
 	if opts.PushIPv6 {
 		extra = append(extra, "--server-ipv6", "fd00:8::/64")

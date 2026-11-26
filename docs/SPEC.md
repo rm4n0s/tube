@@ -287,6 +287,7 @@ Before the TUI opens (and before `--profile` connects), Tube starts a keeper tha
 Two goroutines: one reads IP packets from the TUN's file descriptor and writes each to the tunnel; the other reads from the tunnel and writes to the device. The buffers are as large as the MTU.
 
 - A packet that the device refuses (`EINVAL`, `EIO`) or that the tunnel refuses for its size is dropped and counted; it does not end the pump.
+- The pump does not change a packet. The tunnel (gopenvpn-conn v1.0.2 and newer) clamps the MSS of the TCP SYNs that pass through it, as OpenVPN's `mssfix` does, so that no segment of a connection needs an IP fragment in the tunnel.
 - When the tunnel's `Read` or `Write` fails, the pump ends with that error (`io.EOF` when the server left).
 - The counters (packets and bytes each way, and the dropped packets) can be read while it runs. `Stop` ends both goroutines and returns them; it closes neither the device, which lives across reconnects and switches, nor the tunnel.
 

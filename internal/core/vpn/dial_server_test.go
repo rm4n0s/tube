@@ -6,6 +6,7 @@ package vpn_test
 
 import (
 	"context"
+	"net"
 	"net/netip"
 	"slices"
 	"strings"
@@ -108,6 +109,44 @@ func TestPingThroughTheTunnel(t *testing.T) {
 	s := vpntest.StartServer(t, vpntest.ServerOptions{})
 	tun := mustDial(t, s, nil)
 	pingServer(t, tun, tun.Network().Addrs[0].Addr(), s.TunnelAddr())
+}
+
+// The tunnel clamps the TCP MSS, as OpenVPN's mssfix does (gopenvpn-conn v1.0.2): a SYN that
+// offers 1460 to a listener at the server's tunnel address is answered with a SYN-ACK that
+// offers less (the server's own clamp is off, so the tunnel did it), so no segment of a connection through the tunnel needs an IP fragment.
+func TestTheTunnelClampsTheMSS(t *testing.T) {
+	s := vpntest.StartServer(t, vpntest.ServerOptions{NoMSSFix: true})
+	tun := mustDial(t, s, nil)
+	ln, err := net.Listen("tcp4", netip.AddrPortFrom(s.TunnelAddr(), 0).String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	server := netip.MustParseAddrPort(ln.Addr().String())
+	client := netip.AddrPortFrom(tun.Network().Addrs[0].Addr(), 40001)
+	const offered = 1460
+	if _, err := tun.Write(packettest.SYN4(client, server, offered)); err != nil {
+		t.Fatal(err)
+	}
+	if err := tun.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	buf := make([]byte, 2000)
+	for {
+		n, err := tun.Read(buf)
+		if err != nil {
+			t.Fatalf("no SYN-ACK from %v: %v\nthe server's log:\n%s", server, err, s.Log())
+		}
+		src, dst, ack, mss, ok := packettest.SYNMSS4(buf[:n])
+		if !ok || !ack || src != server.Port() || dst != client.Port() {
+			continue
+		}
+		t.Logf("the SYN-ACK offers an MSS of %d", mss)
+		if mss == 0 || mss >= offered {
+			t.Errorf("the SYN-ACK offers an MSS of %d, want less than %d (the tunnel clamps it)", mss, offered)
+		}
+		return
+	}
 }
 
 func TestDialWithPassword(t *testing.T) {

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-only
 
 // Package packettest builds and reads IP packets by hand, for the tests that play a VPN or a
-// server: ICMP echo requests and replies, over IPv4 and IPv6, and UDP datagrams over IPv4.
+// server: ICMP echo requests and replies, over IPv4 and IPv6, and UDP datagrams and TCP SYNs over
+// IPv4.
 package packettest
 
 import (
@@ -246,4 +247,69 @@ func ParseUDP4(packet []byte) (src, dst netip.AddrPort, payload []byte, ok bool)
 	src = netip.AddrPortFrom(Src(packet), binary.BigEndian.Uint16(udp[0:]))
 	dst = netip.AddrPortFrom(Dst(packet), binary.BigEndian.Uint16(udp[2:]))
 	return src, dst, udp[udpHeaderLen:length], true
+}
+
+// protoTCP is the protocol number of TCP; tcpSYN is its SYN flag; tcpOptMSS is the kind of the
+// maximum segment size option.
+const (
+	protoTCP  = 6
+	tcpSYN    = 0x02
+	tcpOptMSS = 2
+)
+
+// SYN4 builds an IPv4 packet with a TCP SYN from src to dst that offers the maximum segment size
+// mss (the only option), with a correct checksum.
+func SYN4(src, dst netip.AddrPort, mss uint16) []byte {
+	tcp := make([]byte, 24)
+	binary.BigEndian.PutUint16(tcp[0:], src.Port())
+	binary.BigEndian.PutUint16(tcp[2:], dst.Port())
+	binary.BigEndian.PutUint32(tcp[4:], 1000) // the sequence number
+	tcp[12] = 6 << 4                          // 6 words of header
+	tcp[13] = tcpSYN
+	binary.BigEndian.PutUint16(tcp[14:], 65535) // the window
+	tcp[20], tcp[21] = tcpOptMSS, 4
+	binary.BigEndian.PutUint16(tcp[22:], mss)
+	pseudo := make([]byte, 12, 12+len(tcp))
+	s, d := src.Addr().As4(), dst.Addr().As4()
+	copy(pseudo[0:4], s[:])
+	copy(pseudo[4:8], d[:])
+	pseudo[9] = protoTCP
+	binary.BigEndian.PutUint16(pseudo[10:], uint16(len(tcp)))
+	binary.BigEndian.PutUint16(tcp[16:], Checksum(append(pseudo, tcp...)))
+	return append(ipv4(src.Addr(), dst.Addr(), protoTCP, len(tcp)), tcp...)
+}
+
+// SYNMSS4 reads an IPv4 packet that is a TCP SYN or SYN-ACK with an MSS option: the source and
+// the destination ports, whether the ACK flag is set, and the size. ok is false for any other
+// packet, one cut short, or a SYN with no MSS option.
+func SYNMSS4(packet []byte) (srcPort, dstPort uint16, ack bool, mss uint16, ok bool) {
+	if Version(packet) != 4 || packet[9] != protoTCP {
+		return 0, 0, false, 0, false
+	}
+	headerLen := int(packet[0]&0x0f) * 4
+	total := int(binary.BigEndian.Uint16(packet[2:]))
+	if headerLen < ipv4HeaderLen || total > len(packet) || total < headerLen+20 {
+		return 0, 0, false, 0, false
+	}
+	tcp := packet[headerLen:total]
+	dataOffset := int(tcp[12]>>4) * 4
+	if tcp[13]&tcpSYN == 0 || dataOffset < 20 || dataOffset > len(tcp) {
+		return 0, 0, false, 0, false
+	}
+	for opts := tcp[20:dataOffset]; len(opts) > 0; {
+		switch kind := opts[0]; {
+		case kind == 0: // the end of the options
+			return 0, 0, false, 0, false
+		case kind == 1: // no operation
+			opts = opts[1:]
+		case len(opts) < 2 || opts[1] < 2 || int(opts[1]) > len(opts):
+			return 0, 0, false, 0, false
+		case kind == tcpOptMSS && opts[1] == 4:
+			return binary.BigEndian.Uint16(tcp[0:]), binary.BigEndian.Uint16(tcp[2:]), tcp[13]&0x10 != 0,
+				binary.BigEndian.Uint16(opts[2:]), true
+		default:
+			opts = opts[opts[1]:]
+		}
+	}
+	return 0, 0, false, 0, false
 }
