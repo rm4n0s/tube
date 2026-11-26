@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/tube/internal/app"
 )
 
@@ -82,8 +83,14 @@ func (m Model) startEdit(id string) (Model, tea.Cmd) {
 	}
 	m.editor = argv
 	a, ctx := m.app, m.ctx
+	var path string
+	begin := errors.Async(func() error {
+		var err error
+		path, err = a.BeginEdit(ctx, id)
+		return err
+	})
 	return m, func() tea.Msg {
-		path, err := a.BeginEdit(ctx, id)
+		err := begin()
 		return editBeganMsg{id: id, path: path, err: err}
 	}
 }
@@ -101,8 +108,14 @@ func (m Model) editBegan(msg editBeganMsg) (Model, tea.Cmd) {
 // removes the file.
 func (m Model) editorDone(msg editorDoneMsg) (Model, tea.Cmd) {
 	a, ctx := m.app, m.ctx
+	var changed bool
+	end := errors.Async(func() error {
+		var err error
+		changed, err = a.EndEdit(ctx, msg.id, msg.path)
+		return err
+	})
 	return m, func() tea.Msg {
-		changed, err := a.EndEdit(ctx, msg.id, msg.path)
+		err := end()
 		return editEndedMsg{changed: changed, err: err, editorErr: msg.err}
 	}
 }

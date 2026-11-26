@@ -7,6 +7,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/tube/internal/app"
 )
 
@@ -159,9 +160,8 @@ func (m Model) askDelete(p app.Profile) Model {
 			yes:  "Delete",
 		},
 		onYes: func(m Model) (Model, tea.Cmd) {
-			return m, func() tea.Msg {
-				return deletedMsg{name: p.Name, err: a.DeleteProfile(ctx, p.ID)}
-			}
+			remove := errors.Async(func() error { return a.DeleteProfile(ctx, p.ID) })
+			return m, func() tea.Msg { return deletedMsg{name: p.Name, err: remove()} }
 		},
 	}
 	return m

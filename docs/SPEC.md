@@ -545,7 +545,7 @@ Not promised: hiding from the VPN provider; protection against an application th
 
 ## 15. Logging
 
-`slog`, JSON lines, to `tube.log` in the state folder (mode 0600). When the file passes 1 MiB it becomes `tube.log.1` (replacing the old one). The log has the start and the end of each run, the profile's id and name, the remote that answered, the addresses and DNS servers of the tunnel, the counters of the pump, and every error with its Tag and route. It never has a key, a password, a token, or a line of a profile. Nothing is logged to the terminal.
+`slog`, JSON lines, to `tube.log` in the state folder (mode 0600). When the file passes 1 MiB it becomes `tube.log.1` (replacing the old one). The log has the start and the end of each run, the profile's id and name, the remote that answered, the addresses and DNS servers of the tunnel, the counters of the pump, and every error with its Tag and route. The route of an error that was made in a goroutine of Tube's goes on from the function that handed that work over, as if it had done the work itself, so the log says who asked for what failed: a failure of the device in the pump (§9) from the start of the pump, the end of the keeper's socket and the loss of the keeper (§8.1) from the start of the namespace and of the session, a try to connect again from the session's controller, a switch (§10) from the caller of `Use`, and a command of the TUI (§12.2) from the `Update` that made it (`errors.Async` of `github.com/rm4n0s/errors`; CLAUDE.md "Error handling"). The error of the tunnel that ends the pump is the library's and keeps the route that it came with. It never has a key, a password, a token, or a line of a profile. Nothing is logged to the terminal.
 
 ## 16. Testing
 

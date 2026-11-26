@@ -8,6 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/tube/internal/app"
 )
 
@@ -65,7 +66,8 @@ func (m Model) askForget(p app.Profile) Model {
 	m.ask = &asking{
 		q: question{text: "Forget the password of \"" + p.Name + "\"? Tube will ask for it the next time.", yes: "Forget"},
 		onYes: func(m Model) (Model, tea.Cmd) {
-			return m, func() tea.Msg { return forgotMsg{err: a.ForgetPassword(ctx, p.ID)} }
+			forget := errors.Async(func() error { return a.ForgetPassword(ctx, p.ID) })
+			return m, func() tea.Msg { return forgotMsg{err: forget()} }
 		},
 	}
 	return m
@@ -164,18 +166,18 @@ func (m Model) fieldKey(msg tea.KeyPressMsg, p app.Profile) (Model, tea.Cmd) {
 	case "enter":
 		pp.busy = true
 		a, ctx, id, text, open := m.app, m.ctx, p.ID, pp.field.value(), pp.open
-		return m, func() tea.Msg {
-			var err error
+		save := errors.Async(func() error {
 			switch open {
 			case renameField:
-				err = a.RenameProfile(ctx, id, text)
+				return a.RenameProfile(ctx, id, text)
 			case usernameField:
-				err = a.SetUsername(ctx, id, text)
+				return a.SetUsername(ctx, id, text)
 			case dnsField:
-				err = a.SetDNS(ctx, id, text)
+				return a.SetDNS(ctx, id, text)
 			}
-			return fieldDoneMsg{err: err}
-		}
+			return nil
+		})
+		return m, func() tea.Msg { return fieldDoneMsg{err: save()} }
 	}
 	pp.field.key(msg)
 	return m, nil

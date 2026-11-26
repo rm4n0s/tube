@@ -8,6 +8,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/tube/internal/app"
 )
 
@@ -42,9 +43,8 @@ func (m Model) connect(id, name string, creds *app.Credentials, remember app.Rem
 	m.conn = &connecting{id: id, name: name, started: m.clock.Now(), cancel: cancel, login: login}
 	m.now = m.conn.started
 	a := m.app
-	return m, func() tea.Msg {
-		return connectedMsg{err: a.Connect(ctx, id, creds, remember)}
-	}
+	connect := errors.Async(func() error { return a.Connect(ctx, id, creds, remember) })
+	return m, func() tea.Msg { return connectedMsg{err: connect()} }
 }
 
 // connectingKey handles a key on the connecting page: esc cancels.

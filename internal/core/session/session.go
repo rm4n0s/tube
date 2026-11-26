@@ -18,6 +18,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/tube/internal/core/clock"
 	"github.com/rm4n0s/tube/internal/core/pump"
 	"github.com/rm4n0s/tube/internal/core/sandbox"
@@ -128,15 +129,23 @@ func Start(ctx context.Context, opts Options) (*Session, error) {
 	s.publish(func(st *Status) {
 		*st = Status{State: StateConnected, Since: now, ProfileName: s.name, Network: network, DNS: s.dnsOf(network), AppRunning: true}
 	}, false)
-	go s.waitApp()
+	// The wait is handed to its goroutine through errors.Async: the route of its error, which
+	// Wait returns, starts here.
+	waitApp := errors.Async(s.waitApp)
+	go func() {
+		s.appErr = waitApp()
+		close(s.appEnded)
+	}()
 	go s.control()
 	return s, nil
 }
 
-// waitApp waits for the end of the application.
-func (s *Session) waitApp() {
-	s.appStatus, s.appErr = s.sb.Wait()
-	close(s.appEnded)
+// waitApp waits for the end of the application and keeps its status. It fails when the keeper
+// was lost first.
+func (s *Session) waitApp() error {
+	st, err := s.sb.Wait()
+	s.appStatus = st
+	return err
 }
 
 // start does the steps of Start; undo undoes what it made.

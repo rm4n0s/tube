@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/tube/internal/app"
 )
 
@@ -67,7 +68,8 @@ func (m Model) runPageHeight() int { return max(m.height-runFrameLines, 0) }
 // start is the command that starts the application, after the connect.
 func (m Model) start() tea.Cmd {
 	a, ctx := m.app, m.ctx
-	return func() tea.Msg { return startedMsg{err: a.Start(ctx)} }
+	start := errors.Async(func() error { return a.Start(ctx) })
+	return func() tea.Msg { return startedMsg{err: start()} }
 }
 
 // started shows the run screen, or goes back to the list after an error.

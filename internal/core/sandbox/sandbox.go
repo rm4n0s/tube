@@ -98,8 +98,8 @@ type Sandbox struct {
 	waitErr error
 
 	// The reader hands the answers of the keeper to replies, closes appExited when the
-	// application has ended (status says how), and closes gone with readErr when the socket
-	// can no longer be read.
+	// application has ended (status says how), and ends when the socket can no longer be read:
+	// gone is then closed, and readErr says why.
 	replies   chan reply
 	appExited chan struct{}
 	status    ExitStatus
@@ -165,7 +165,13 @@ func Start(ctx context.Context, opts Options) (*Sandbox, error) {
 		s.waitErr = s.cmd.Wait()
 		close(s.exited)
 	}()
-	go s.read()
+	// The reader is handed to its goroutine through errors.Async: the route of the error that
+	// ends the reading, which the requests return from then on, starts here.
+	read := errors.Async(s.read)
+	go func() {
+		s.readErr = read()
+		close(s.gone)
+	}()
 	if err := s.awaitReady(ctx); err != nil {
 		// The error of the start is the one that matters.
 		_ = s.Close()
@@ -233,15 +239,14 @@ type reply struct {
 	fd int
 }
 
-// read reads every message of the keeper until the socket closes: the exited message closes
-// appExited, and every other one goes to replies. Only a ready message keeps its descriptor.
-func (s *Sandbox) read() {
-	defer close(s.gone)
+// read reads every message of the keeper until the socket closes, and returns the error that
+// ended the reading: the exited message closes appExited, and every other one goes to replies.
+// Only a ready message keeps its descriptor.
+func (s *Sandbox) read() error {
 	for {
 		m, fd, err := receive(s.conn)
 		if err != nil {
-			s.readErr = err
-			return
+			return err
 		}
 		if fd >= 0 && m.Type != msgReady {
 			_ = unix.Close(fd) // only the device is ever wanted

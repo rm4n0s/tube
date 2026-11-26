@@ -4,6 +4,7 @@ package tui
 
 import (
 	tea "charm.land/bubbletea/v2"
+	"github.com/rm4n0s/errors"
 )
 
 // noOutput is the Output tab of an application that printed nothing yet.
@@ -109,8 +110,9 @@ func (m Model) outputKey(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 // message line.
 func (m Model) input(p []byte) tea.Cmd {
 	a := m.app
+	write := errors.Async(func() error { return a.Input(p) })
 	return func() tea.Msg {
-		if err := a.Input(p); err != nil {
+		if err := write(); err != nil {
 			return doneMsg{err: err}
 		}
 		return nil

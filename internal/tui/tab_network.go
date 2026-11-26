@@ -8,6 +8,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/tube/internal/app"
 )
 
@@ -167,9 +168,8 @@ func (m Model) switchTo(id, name string, creds *app.Credentials, remember app.Re
 	m.run, m.page, m.login = &r, pageRun, nil
 	m.now = r.switching.started
 	a := m.app
-	return m, func() tea.Msg {
-		return switchedMsg{err: a.Switch(ctx, id, creds, remember)}
-	}
+	change := errors.Async(func() error { return a.Switch(ctx, id, creds, remember) })
+	return m, func() tea.Msg { return switchedMsg{err: change()} }
 }
 
 // switched handles the end of a switch.

@@ -70,7 +70,7 @@ Before reporting a task as finished, run `gofmt` (on `cmd` and `internal`), `go 
 - Read the source of a library in the Go module cache when its behavior is unclear (`go list -m -f '{{.Dir}}' github.com/rm4n0s/gopenvpn-conn`); gopenvpn-conn's `README.md` and `docs/SPEC.md` describe its use and design
 
 ## Error handling
-Use `github.com/rm4n0s/errors` for all errors. Never use `fmt.Errorf`, and never import the standard library `errors` package: this package re-exports `errors.Is`, `errors.As` and `errors.Unwrap`, so a single import covers everything. Read `AI_GUIDE.md` of github.com/rm4n0s/errors (in the Go module cache: `go list -m -f '{{.Dir}}' github.com/rm4n0s/errors`) before writing error code.
+Use `github.com/rm4n0s/errors` for all errors. Never use `fmt.Errorf`, and never import the standard library `errors` package: this package re-exports `errors.Is`, `errors.As`, `errors.Unwrap` and `errors.Join`, so a single import covers everything. Read `AI_GUIDE.md` of github.com/rm4n0s/errors (in the Go module cache: `go list -m -f '{{.Dir}}' github.com/rm4n0s/errors`) before writing error code.
 
 **Creating errors**
 - New failure with a fixed message: `errors.New("Tag", "message", "key", value, ...)` (all metadata in this one call, never `New(...).SetMetadata(...)`)
@@ -88,9 +88,29 @@ Use `github.com/rm4n0s/errors` for all errors. Never use `fmt.Errorf`, and never
 - Functions return the plain `error` interface, never `*errors.Error` (avoids the non-nil-interface-holding-nil-pointer bug)
 - `errors.FromError(err)` is a plain type assertion. It fails if something else wrapped the error, so don't wrap these errors with anything
 
+**Goroutines**
+- A goroutine has its own stack, so an error that is made in it has a route without the function that started it. Hand the work over through `errors.Async` (github.com/rm4n0s/errors v0.3.0 or newer): call it in the function that starts the work, and run its result in the goroutine:
+  ```go
+  waitApp := errors.Async(s.waitApp) // in Start, which starts the goroutine
+  go func() {
+      s.appErr = waitApp()
+      close(s.appEnded)
+  }()
+  ```
+  The route then reads as if that function had called the work itself (`Start->Session.waitApp->Sandbox.Wait.SandboxKeeperLost`), with nothing of the goroutine in it. Never call `errors.Async` inside the goroutine: the function that started it is then lost
+- The work must **return** the error: one that it sends on a channel or stores itself does not pass through `errors.Async`. A value that the work produces is assigned to a variable from inside the closure
+- Work that another goroutine does later, for a caller that waits for it (a command to the session's controller: `Session.Use`), is handed over where it is asked for, not where the loop that runs it was started: the route starts at the caller
+- A command of the TUI that calls the App is such work: Bubble Tea runs a `tea.Cmd` in a goroutine, and `Update` gets the error in a message. `errors.Async` is called in the function that makes the command, which `Update` calls, and the command runs its result: `connect := errors.Async(func() error { return a.Connect(ctx, id, creds, remember) })`, then `return m, func() tea.Msg { return connectedMsg{err: connect()} }`
+- `errors.Async` changes the error that the work returns: it replaces the top of its stack. So only an error that this goroutine alone holds is returned through it. An error that a library keeps and gives to several goroutines is not: gopenvpn-conn gives the error that ended a connection to `Read` and to `Write` alike, so the pump ends with the tunnel's error directly, and returns through `errors.Async` only the errors that it makes itself (`internal/core/pump`)
+- An `*errors.Error` is not safe for concurrent use: no `SetMetadata`, `RemoveMetadata` or `SetMessage` on an error that another goroutine can still reach, and never on a sentinel
+- `errors.AsyncRecover` is `errors.Async` that also turns a panic of the work into an error with the Tag `errors.TagPanic`. It changes a crash into an error: use it only where the spec says that a panic there must not end Tube. Nothing does today
+- When several goroutines can fail and each of their errors matters, collect what they return and combine it with `errors.Join`; the caller then reads them with `errors.All(err)`, because `errors.FromError` does not look inside a joined error. Nothing in Tube joins errors today: the pump ends with the first failure (SPEC §9)
+- A goroutine whose errors never leave it needs nothing
+
 **Inspecting errors**
 - `appErr, ok := errors.FromError(err)`, then use `appErr.Tag`, `appErr.Metadata`, `appErr.Message`
 - Use `errors.Is` / `errors.As` / `errors.Unwrap` for the underlying cause stored in `OriginalErr`
+- `errors.All(err)` returns every `*errors.Error` inside a joined or wrapped error, the outermost first
 
 **Testing errors**
 - Every new failure case gets its own unique Tag and a test that asserts the route, not just that an error occurred:
@@ -103,7 +123,8 @@ Use `github.com/rm4n0s/errors` for all errors. Never use `fmt.Errorf`, and never
       t.Errorf("unexpected failure path: %s", appErr.Route())
   }
   ```
-- A route lists the call chain from outermost to innermost (`Type.Method` or `Func`, joined by `->`) and ends with the Tag. `HasRoute` matches by substring
+- A route lists the call chain from outermost to innermost (`Type.Method` or `Func`, joined by `->`) and ends with the Tag. `HasRoute` matches by substring. It has no frame of the Go runtime (`goexit`, `gopanic`, ...)
+- An error that crosses goroutines gets a test of its whole route, from the function that handed the work over down to the Tag (`"Session.Use->Session.Use.func1->controller.use->...->Sandbox.configure.SandboxConfigureFailed"`): the test makes the error where the work runs, in a goroutine of its own, and reads it where it arrives. An error that is only logged there is read back from the log
 - Log errors with `slog`, passing the error as an attribute (`l.Error("failed", "err", err)`): `*errors.Error` is a `slog.LogValuer`, so the log gets the Tag, Route, Metadata and stack frames, and the logged object can be replayed in a test via `errors.ErrorJson` and `errors.FromJson`. Do not call `ToJson` or `json.Marshal` on an error yourself
 
 ## Security

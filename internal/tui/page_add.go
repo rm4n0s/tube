@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/tube/internal/app"
 )
 
@@ -229,8 +230,14 @@ func (m Model) addPaste(text string) (Model, tea.Cmd) {
 // addProfile is the command that adds the profile.
 func (m Model) addProfile(path, name, dns string, withoutScripts bool) tea.Cmd {
 	a, ctx := m.app, m.ctx
+	var id string
+	add := errors.Async(func() error {
+		var err error
+		id, err = a.AddProfile(ctx, path, name, dns, withoutScripts)
+		return err
+	})
 	return func() tea.Msg {
-		id, err := a.AddProfile(ctx, path, name, dns, withoutScripts)
+		err := add()
 		return addedMsg{id: id, name: shownName(path, name), err: err}
 	}
 }

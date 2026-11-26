@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/tube/internal/core/clock"
 	"github.com/rm4n0s/tube/internal/core/pump"
 	"github.com/rm4n0s/tube/internal/core/sanitize"
@@ -74,7 +75,7 @@ func (s *Session) control() {
 			c.dialed(r)
 		case cmd := <-s.cmds:
 			if cmd.use != nil {
-				cmd.done <- c.use(cmd.ctx, *cmd.use)
+				cmd.done <- cmd.use(c)
 			} else {
 				c.disconnect()
 				close(cmd.disconnected)
@@ -136,15 +137,22 @@ func (c *controller) wait() {
 	c.timer = c.s.opts.Clock.AfterFunc(delay(c.tries), func() { close(waited) })
 }
 
-// redial starts a try in its own goroutine; its result comes to the loop.
+// redial starts a try in its own goroutine; its result comes to the loop. The try is handed
+// over through errors.Async: the route of its error, which the loop logs, starts here.
 func (c *controller) redial() {
 	c.waited, c.timer = nil, nil
 	ctx, cancel := context.WithCancel(c.ctx)
 	result := make(chan dialed, 1)
 	c.result, c.cancel = result, cancel
 	redial := c.s.redial
+	var tun vpn.Tunnel
+	try := errors.Async(func() error {
+		var err error
+		tun, err = redial(ctx)
+		return err
+	})
 	go func() {
-		tun, err := redial(ctx)
+		err := try()
 		result <- dialed{tun, err}
 	}()
 }

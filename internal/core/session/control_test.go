@@ -199,7 +199,13 @@ func TestUseWithANetworkThatCannotBeConfigured(t *testing.T) {
 	bad.MTU = 100000
 	tun2 := pingTunnel(bad)
 	err := c.s.Use(context.Background(), connection(tun2, "bad"))
-	errtest.Route(t, err, "SandboxConfigureFailed")
+	// The controller made the error, in its goroutine: its route starts here, at the caller of
+	// Use, and has nothing of the controller's loop in it (errors.Async).
+	errtest.Route(t, err, "TestUseWithANetworkThatCannotBeConfigured->Session.Use->Session.Use.func1->controller.use->"+
+		"controller.connect->Session.configure->Sandbox.Configure->Sandbox.configure.SandboxConfigureFailed")
+	if appErr, ok := errors.FromError(err); ok && appErr.HasRoute("Session.control") {
+		t.Errorf("the route has the goroutine of the controller in it: %s", appErr.Route())
+	}
 	if !tun2.Closed() {
 		t.Error("the tunnel that cannot be used is not closed")
 	}

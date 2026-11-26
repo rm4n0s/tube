@@ -27,11 +27,11 @@ type Connection struct {
 	Redial func(ctx context.Context) (vpn.Tunnel, error)
 }
 
-// command is a command of the user to the controller: Disconnect, or Use with its connection.
-// The controller answers a Use on done, and closes disconnected when it has disconnected.
+// command is a command of the user to the controller: Disconnect, or Use. use is the work of a
+// Use, which the controller runs, giving itself; it is nil for a Disconnect. The controller
+// answers a Use on done, and closes disconnected when it has disconnected.
 type command struct {
-	use          *Connection
-	ctx          context.Context
+	use          func(running *controller) error
 	done         chan error
 	disconnected chan struct{}
 }
@@ -53,8 +53,17 @@ func (s *Session) Disconnect() {
 // the error is SessionEnded.
 func (s *Session) Use(ctx context.Context, c Connection) error {
 	done := make(chan error, 1)
+	// The controller does the work, in its goroutine. It is handed over through errors.Async,
+	// here where it is asked for: the route of its error starts at the caller of Use, and not at
+	// the controller's loop.
+	var ctl *controller
+	use := errors.Async(func() error { return ctl.use(ctx, c) })
+	cmd := command{done: done, use: func(running *controller) error {
+		ctl = running
+		return use()
+	}}
 	select {
-	case s.cmds <- command{use: &c, ctx: ctx, done: done}:
+	case s.cmds <- cmd:
 		return <-done
 	case <-s.ctrlDone:
 	}

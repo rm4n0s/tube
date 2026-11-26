@@ -13,6 +13,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/tube/internal/app"
 	"github.com/rm4n0s/tube/internal/core/clock"
 )
@@ -137,8 +138,14 @@ func (m Model) Init() tea.Cmd { return tea.Batch(m.readSnapshot(), tea.RequestBa
 // readSnapshot is the command that reads the snapshot.
 func (m Model) readSnapshot() tea.Cmd {
 	a, ctx := m.app, m.ctx
+	var snap app.Snapshot
+	read := errors.Async(func() error {
+		var err error
+		snap, err = a.Snapshot(ctx)
+		return err
+	})
 	return func() tea.Msg {
-		snap, err := a.Snapshot(ctx)
+		err := read()
 		return snapshotMsg{snap, err}
 	}
 }

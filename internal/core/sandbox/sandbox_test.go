@@ -20,6 +20,7 @@ import (
 	"github.com/rm4n0s/tube/internal/core/errtest"
 	"github.com/rm4n0s/tube/internal/core/nstest"
 	"github.com/rm4n0s/tube/internal/core/sandbox/sandboxtest"
+	"github.com/rm4n0s/tube/internal/core/vpn"
 	"golang.org/x/sys/unix"
 )
 
@@ -65,6 +66,23 @@ func fakeKeeper(role string) int {
 			return 2
 		}
 		status = 3
+	case "garbage":
+		if _, _, err := conn.WriteMsgUnix([]byte("not json"), nil, nil); err != nil {
+			return 2
+		}
+	case "leave":
+		// Ready, and then gone at the first request, without an answer.
+		null, err := os.Open(os.DevNull)
+		if err != nil {
+			return 2
+		}
+		if err := send(conn, message{Type: msgReady}, int(null.Fd())); err != nil {
+			return 2
+		}
+		if _, _, err := receive(conn); err != nil {
+			return 2
+		}
+		return 0
 	}
 	// Wait for Tube to close its end.
 	buf := make([]byte, 16)
@@ -362,6 +380,60 @@ func TestMisbehavingKeepers(t *testing.T) {
 		}
 		errtest.Route(t, s.Close(), "Sandbox.close.SandboxKeeperExit")
 	})
+}
+
+// The reader of the keeper's messages runs in a goroutine of its own, and the error that ends
+// it is returned by the request that waits for an answer, in another goroutine. Its route goes
+// on from the Start that started the reader, as if Start had called read itself
+// (errors.Async), and has nothing of the goroutine in it.
+func TestTheErrorOfTheReaderStartsAtStart(t *testing.T) {
+	nstest.Require(t)
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name string
+		role string
+		// fail makes the keeper end the reading, and returns the error of the request.
+		fail      func(t *testing.T, opts Options) error
+		wantRoute string
+	}{
+		{
+			name: "a first message that cannot be read ends the start",
+			role: "garbage",
+			fail: func(_ *testing.T, opts Options) error {
+				_, err := Start(context.Background(), opts)
+				return err
+			},
+			wantRoute: "TestTheErrorOfTheReaderStartsAtStart.func1->Start->Sandbox.read->receive.SandboxMessageInvalid",
+		},
+		{
+			name: "a keeper that leaves while a request waits for its answer",
+			role: "leave",
+			fail: func(t *testing.T, opts Options) error {
+				s, err := Start(context.Background(), opts)
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { _ = s.Close() }) // the keeper has ended; its status does not matter
+				_, err = s.Configure(context.Background(), vpn.Network{MTU: 1400}, nil)
+				return err
+			},
+			wantRoute: "TestTheErrorOfTheReaderStartsAtStart.func2->Start->Sandbox.read->receive.SandboxSocketClosed",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := Options{Exe: exe, Env: append(os.Environ(), fakeKeeperVar+"="+tt.role), StepTimeout: 5 * time.Second}
+			err := tt.fail(t, opts)
+			errtest.Route(t, err, tt.wantRoute)
+			appErr, _ := errors.FromError(err)
+			if route := appErr.Route(); strings.Contains(route, "->Start.func") {
+				t.Errorf("the route has the goroutine of the reader in it: %s", route)
+			}
+		})
+	}
 }
 
 func TestCheck(t *testing.T) {

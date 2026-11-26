@@ -6,7 +6,7 @@ require (
 	charm.land/bubbletea/v2 v2.1.2
 	charm.land/lipgloss/v2 v2.1.1
 	github.com/charmbracelet/x/ansi v0.11.9
-	github.com/rm4n0s/errors v0.2.0
+	github.com/rm4n0s/errors v0.3.0
 	github.com/rm4n0s/gopenvpn-conn v1.0.1
 	golang.org/x/sys v0.50.0
 )

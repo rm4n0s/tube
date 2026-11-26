@@ -30,6 +30,10 @@ type harness struct {
 	model tea.Model
 	clock *clock.Fake
 	quit  bool
+	// across runs every command in a goroutine of its own, as the program does; seen are the
+	// messages that the commands produced since it was set.
+	across bool
+	seen   []tea.Msg
 }
 
 // The folders of the harness: no test reads the folders of the machine through the add page,
@@ -81,8 +85,21 @@ func newHarness(t *testing.T, a app.Application, width, height int) *harness {
 func (h *harness) run(cmd tea.Cmd) {
 	h.t.Helper()
 	if cmd != nil {
-		h.send(cmd())
+		h.send(h.exec(cmd))
 	}
+}
+
+// exec runs a command and returns its message: in the goroutine of the test or, with across, in
+// a goroutine of its own, as the program runs a command.
+func (h *harness) exec(cmd tea.Cmd) tea.Msg {
+	if !h.across {
+		return cmd()
+	}
+	out := make(chan tea.Msg, 1)
+	go func() { out <- cmd() }()
+	msg := <-out
+	h.seen = append(h.seen, msg)
+	return msg
 }
 
 // send sends a message, then every message that the commands it returns produce.
@@ -100,7 +117,7 @@ func (h *harness) send(msg tea.Msg) {
 		case tea.BatchMsg:
 			for _, cmd := range msg {
 				if cmd != nil {
-					queue = append(queue, cmd())
+					queue = append(queue, h.exec(cmd))
 				}
 			}
 			continue
@@ -108,7 +125,7 @@ func (h *harness) send(msg tea.Msg) {
 		var cmd tea.Cmd
 		h.model, cmd = h.model.Update(msg)
 		if cmd != nil {
-			queue = append(queue, cmd())
+			queue = append(queue, h.exec(cmd))
 		}
 	}
 }

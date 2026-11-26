@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/netip"
 	"runtime"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -176,20 +177,66 @@ func TestTheTunnelFails(t *testing.T) {
 	})
 }
 
+// The pump of these tests is started by the helper start, in the goroutine of the test: the
+// route of an error that one of the pump's goroutines made goes on from there, through Start,
+// as if Start had called toTunnel and fromTunnel itself (errors.Async).
 func TestTheDeviceFails(t *testing.T) {
-	t.Run("a read", func(t *testing.T) {
-		p, dev, _ := start(t)
-		dev.Fail(syscall.EBADF)
-		waitDone(t, p)
-		errtest.Route(t, p.Err(), "Pump.toTunnel.PumpDeviceReadFailed")
-	})
-	t.Run("a write", func(t *testing.T) {
-		p, dev, tun := start(t)
-		dev.failWrites(syscall.EBADF)
-		tun.Deliver([]byte("x"))
-		waitDone(t, p)
-		errtest.Route(t, p.Err(), "Pump.fromTunnel.PumpDeviceWriteFailed")
-	})
+	tests := []struct {
+		name      string
+		fail      func(dev *fakeDevice, tun *vpntest.Tunnel)
+		wantRoute string
+		wantCause error
+	}{
+		{
+			name:      "a read",
+			fail:      func(dev *fakeDevice, _ *vpntest.Tunnel) { dev.Fail(syscall.EBADF) },
+			wantRoute: "TestTheDeviceFails.func3->start->Start->Pump.toTunnel.PumpDeviceReadFailed",
+			wantCause: syscall.EBADF,
+		},
+		{
+			name: "a write",
+			fail: func(dev *fakeDevice, tun *vpntest.Tunnel) {
+				dev.failWrites(syscall.EBADF)
+				tun.Deliver([]byte("x"))
+			},
+			wantRoute: "TestTheDeviceFails.func3->start->Start->Pump.fromTunnel.PumpDeviceWriteFailed",
+			wantCause: syscall.EBADF,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p, dev, tun := start(t)
+			tt.fail(dev, tun)
+			waitDone(t, p)
+			errtest.Route(t, p.Err(), tt.wantRoute)
+			if !errors.Is(p.Err(), tt.wantCause) {
+				t.Errorf("Err = %v, want the cause %v", p.Err(), tt.wantCause)
+			}
+			appErr, _ := errors.FromError(p.Err())
+			if route := appErr.Route(); strings.Contains(route, "Pump.move") {
+				t.Errorf("the route has the goroutine of the pump in it: %s", route)
+			}
+		})
+	}
+}
+
+// An error of the tunnel is the library's, which gives the same value to the Read and to the
+// Write: the pump ends with it untouched, with the route that it came with.
+func TestTheErrorOfTheTunnelKeepsItsRoute(t *testing.T) {
+	p, _, tun := start(t)
+	failed := errors.New("LinkFailed", "the link failed")
+	want := failed.Route()
+	tun.Fail(failed)
+	waitDone(t, p)
+	if p.Err() != error(failed) {
+		t.Fatalf("Err = %v, want the same value", p.Err())
+	}
+	if got := failed.Route(); got != want {
+		t.Errorf("the route of the tunnel's error is now %s, it was %s", got, want)
+	}
+	if want != "TestTheErrorOfTheTunnelKeepsItsRoute.LinkFailed" {
+		t.Errorf("the route was %s", want)
+	}
 }
 
 func TestStop(t *testing.T) {

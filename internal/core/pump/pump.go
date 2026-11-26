@@ -51,6 +51,8 @@ type Counters struct {
 type Pump struct {
 	device Device
 	tunnel vpn.Tunnel
+	// deviceBuf is the size of the buffer for a packet of the device.
+	deviceBuf int
 
 	// stopping is set by Stop: a read that ends then is the stop, not a failure.
 	stopping atomic.Bool
@@ -69,11 +71,27 @@ type Pump struct {
 
 // Start starts moving packets. mtu is the tunnel's.
 func Start(device Device, tunnel vpn.Tunnel, mtu int) *Pump {
-	p := &Pump{device: device, tunnel: tunnel, done: make(chan struct{})}
+	p := &Pump{device: device, tunnel: tunnel, deviceBuf: mtu + deviceSlack, done: make(chan struct{})}
+	// The two directions are handed to their goroutines through errors.Async, so that the route
+	// of an error that the pump makes (a failure of the device) starts at the function that
+	// started the pump. Only those errors are returned through it. An error of the tunnel is
+	// the library's: it keeps one error for the connection and gives it to the Read and to the
+	// Write, so both goroutines can hold the same value at once, and errors.Async, which
+	// changes the error it returns, would change it under the other goroutine.
+	toTunnel := errors.Async(p.toTunnel)
+	fromTunnel := errors.Async(p.fromTunnel)
 	p.wg.Add(2)
-	go p.toTunnel(mtu + deviceSlack)
-	go p.fromTunnel()
+	go p.move(toTunnel)
+	go p.move(fromTunnel)
 	return p
+}
+
+// move runs one direction of the pump, and ends the pump with the error that it returns.
+func (p *Pump) move(direction func() error) {
+	defer p.wg.Done()
+	if err := direction(); err != nil {
+		p.end(err)
+	}
 }
 
 // Done is closed when the pump has ended by itself: the tunnel or the device failed.
@@ -135,17 +153,18 @@ func (p *Pump) end(err error) {
 	})
 }
 
-// toTunnel moves packets from the device to the tunnel.
-func (p *Pump) toTunnel(size int) {
-	defer p.wg.Done()
-	buf := make([]byte, size)
+// toTunnel moves packets from the device to the tunnel, until the device or the tunnel fails. It
+// returns the error of the device, which it makes; a failure of the tunnel ends the pump here
+// and is not returned (Start says why).
+func (p *Pump) toTunnel() error {
+	buf := make([]byte, p.deviceBuf)
 	for {
 		n, err := p.device.Read(buf)
 		if err != nil {
-			if !p.stopping.Load() {
-				p.end(errors.NewErr(TagDeviceReadFailed, err))
+			if p.stopping.Load() {
+				return nil
 			}
-			return
+			return errors.NewErr(TagDeviceReadFailed, err)
 		}
 		if _, err := p.tunnel.Write(buf[:n]); err != nil {
 			if vpn.KindOf(err) == vpn.KindPacketTooLarge {
@@ -153,16 +172,17 @@ func (p *Pump) toTunnel(size int) {
 				continue
 			}
 			p.end(err)
-			return
+			return nil
 		}
 		p.toPackets.Add(1)
 		p.toBytes.Add(uint64(n))
 	}
 }
 
-// fromTunnel moves packets from the tunnel to the device.
-func (p *Pump) fromTunnel() {
-	defer p.wg.Done()
+// fromTunnel moves packets from the tunnel to the device, until the tunnel or the device fails.
+// It returns the error of the device, which it makes; a failure of the tunnel ends the pump here
+// and is not returned (Start says why).
+func (p *Pump) fromTunnel() error {
 	buf := make([]byte, maxPacketSize)
 	for {
 		n, err := p.tunnel.Read(buf)
@@ -170,15 +190,14 @@ func (p *Pump) fromTunnel() {
 			if !p.stopping.Load() {
 				p.end(err)
 			}
-			return
+			return nil
 		}
 		if _, err := p.device.Write(buf[:n]); err != nil {
 			if refused(err) {
 				p.dropped.Add(1)
 				continue
 			}
-			p.end(errors.NewErr(TagDeviceWriteFailed, err))
-			return
+			return errors.NewErr(TagDeviceWriteFailed, err)
 		}
 		p.fromPackets.Add(1)
 		p.fromBytes.Add(uint64(n))
