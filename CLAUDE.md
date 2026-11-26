@@ -89,7 +89,7 @@ Use `github.com/rm4n0s/errors` for all errors. Never use `fmt.Errorf`, and never
 - `errors.FromError(err)` is a plain type assertion. It fails if something else wrapped the error, so don't wrap these errors with anything
 
 **Goroutines**
-- A goroutine has its own stack, so an error that is made in it has a route without the function that started it. Hand the work over through `errors.Async` (github.com/rm4n0s/errors v0.3.0 or newer): call it in the function that starts the work, and run its result in the goroutine:
+- A goroutine has its own stack, so an error that is made in it has a route without the function that started it. Hand the work over through `errors.Async` (github.com/rm4n0s/errors v0.3.1 or newer): call it in the function that starts the work, and run its result in the goroutine:
   ```go
   waitApp := errors.Async(s.waitApp) // in Start, which starts the goroutine
   go func() {

@@ -419,3 +419,12 @@ The log of the finished steps of `docs/IMPLEMENTATION.md`, in order (its rule 11
 - Manual checks: none
 - Differences from the spec before the change: none in what Tube does. §15 now says where the route of an error that crossed goroutines begins. CLAUDE.md "Error handling" has the rules for goroutines, `errors.Join` and `errors.All`.
 - Seen, and not Tube's to change: when work that is handed over through `errors.Async` hands more work over itself (the session's controller starts a pump while it does a `Use`; the command of the TUI that starts the application starts the session's goroutines), and the inner error does not come back through the outer hand-over, its route has the frame `handOff.func1` of the errors package and the function of the outer goroutine in it, in place of the function that handed the outer work over (seen with a session that was started inside such work, whose keeper was then killed: `<the goroutine>->handOff.func1-><the work>->Start->Session.waitApp->Sandbox.Wait.SandboxKeeperLost`). The route is still true.
+
+## Change outside the steps: errors v0.3.1
+- Date: 2026-11-26
+- Why: the user, 2026-11-26, asked for the bug-fix release v0.3.1 of `github.com/rm4n0s/errors` and for every project to be updated to it and released with a new version tag. Done on the branch `feat/errors-v0.3.1`, not as a step of `docs/IMPLEMENTATION.md`.
+- What was done: `github.com/rm4n0s/errors` v0.3.1 (it was v0.3.0), and the version in CLAUDE.md "Error handling"; nothing else of `go.mod` changed and no code, test or golden file changed. v0.3.1 changes no API: `errors.Async` is now safe for an error that other goroutines already hold (it no longer replaces the stack in place), and a route stops at an `Async` wrapper that the error did not return through, so the frame `handOff.func1` that is described in the entry above is no longer in such a route. The code that avoids passing a shared error through `errors.Async` (the pump's error of the tunnel) stays: it is still correct.
+- Checks: gofmt, `go vet ./...`, `golangci-lint run` (also with `--build-tags tube_server`), `go test -race -p 2 ./...`, `CGO_ENABLED=0 go build ./...`, `CGO_ENABLED=0 go test ./...`, `scripts/error-tags.sh --untested` and the tests against the real server passed. The linter ran with `--allow-parallel-runners` because other agents of this machine ran golangci-lint at the same time.
+- Proofs: none (nothing that the user sees changed)
+- Manual checks: none
+- Differences from the spec: none
