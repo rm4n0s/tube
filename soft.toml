@@ -1,0 +1,12 @@
+# Tube, for Soft (github.com/rm4n0s/soft). Tube runs in a terminal: opened from the menu (with no
+# arguments) it shows its terminal UI, which keeps the OpenVPN profiles; run `tube <application>`
+# in a terminal to run an application through a VPN.
+
+[[app]]
+cmd        = "./cmd/tube"
+name       = "Tube"
+comment    = "Run one application through a VPN: your OpenVPN profiles"
+categories = ["Network", "ConsoleOnly"]
+keywords   = ["vpn", "openvpn", "network", "profile"]
+terminal   = true
+icon       = "docs/logo.svg"
